@@ -38,14 +38,14 @@ double localDensity(int); //! Currently unused, can be removed once FFT is teste
 
 //Define parameters TODO: Put in order of usage
 //!! NB: Set INITIALB and INITIALP to 0 for initial model (without phenotypic differentiation) !!
-#define TMAX 5
+#define TMAX 10
 #define DELTATIME 1 //Q: Only used for output?
 #define DELTASPACE 1
 #define INITIALA 5
 #define INITIALB 0
 #define INITIALPOPULATIONSIZE INITIALA + INITIALB
-#define XMAX 10
-#define YMAX 10
+#define XMAX 5
+#define YMAX 5
 #define NPOS XMAX * YMAX
 #define INITIALP 1 //Set to 1 for only A offspring or 0 for only B offspring
 #define MAXSIZE 1000 //Maximum number of individuals in the population. Note that MAXSIZE can be larger than XMAX*YMAX because multiple individuals are allowed at the same position.
@@ -204,10 +204,10 @@ void createNormalKernel(int scale){
 		if(exp_counter < THRESHOLD){
 			exp_counter = 0;
 		}
-		normal_kernel1D[x] = exp_counter; //Fortran uses partial summation, which is slightly different
+		normal_kernel1D[x] = creal(exp_counter); //Fortran uses partial summation, which is slightly different
 	}
 	int index = 0;
-	double kernel_sum = 0;
+	double kernel_sum = 0.0;
 	for(int x = 0; x < XMAX; x++){
 		for(int y = 0; y < YMAX; y++){
 			normal_kernel2D[index] = normal_kernel1D[x]*normal_kernel1D[y];
@@ -258,15 +258,15 @@ void createLocalDensityMatrix(){
  */
 void fillDensityMatrix(){
 	int position = 0;
-	for (int x = 0; x < XMAX; x++){
-		for (int y = 0; y < YMAX; y++){
+	for (int x = 1; x < XMAX+1; x++){ //Add 1 to let x and y correspond to actual x and y positions of the individuals
+		for (int y = 1; y < YMAX+1; y++){
 			int counter = 0;
 			for (int index = 0; index < population_size_old; index++){
 				if (individuals_old[index].xpos == x & individuals_old[index].ypos == y){
 					counter += 1;
 				}
 			}
-			density[position] = counter;
+			density[position] = creal(counter);
 			position += 1;
 		}
 	}
@@ -384,7 +384,7 @@ void checkPopulationSize(){
 }
 
 /**
- * Updates the old and new state for the next timestep, i.e. old individuals are replaced by new individuals and the new_individuals array is reset.
+ * Updates the old and new state for the next timestep, i.e. old individuals are replaced by new individuals. Resets all pointers with timestep-specific information.
  */
 void updateStates(){
 	memset(individuals_old, 0, MAXSIZE * sizeof(*individuals_old)); //This resets the individuals_old array, setting all struct variables to 0
@@ -394,6 +394,10 @@ void updateStates(){
 	memset(individuals_new, 0, MAXSIZE * sizeof(*individuals_new)); //Reset the individuals_new array
 	population_size_old = population_size_new; //Switch to new state, including all individuals that were born or didn't die in the previous timestep
 	population_size_new = 0; //Reset value of new state population size
+	memset(density, 0, NPOS * sizeof(*density));
+	memset(density_forward, 0, NPOS * sizeof(*density_forward));
+	memset(kernel_density_product, 0, NPOS * sizeof(*kernel_density_product));
+	memset(kernel_density_backward, 0, NPOS * sizeof(*kernel_density_backward));
 }
 
 /**
