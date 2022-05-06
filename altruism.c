@@ -20,7 +20,7 @@
 void srand(unsigned int seed);
 void allocateMemory(void);
 void createFFTWplans(void);
-void MakeStepKernel(int); //TODO: This function is copied from Laura's code. To be replaced by normal kernel function.
+void MakeStepKernel(int); //This function is copied from Laura's code. Can perhaps be removed once createNormalKernel() is tested and working correctly
 void createNormalKernel(int);
 void makeIndividuals(void);
 int rand(void);
@@ -34,10 +34,10 @@ void checkPopulationSize(void);
 void updateStates(void);
 void destroyFFTWplans(void);
 void freeMemory(void);
-double localDensity(int); //! Currently unused, can be removed once FFT is working correctly !
+double localDensity(int); //! Currently unused, can be removed once FFT is tested and working correctly !
 
 //Define parameters TODO: Put in order of usage
-//!! Set INITIALB and INITIALP to 0 for model without phenotypic differentiation
+//!! NB: Set INITIALB and INITIALP to 0 for initial model (without phenotypic differentiation) !!
 #define TMAX 5
 #define DELTATIME 1 //Q: Only used for output?
 #define DELTASPACE 1
@@ -100,22 +100,8 @@ int main() {
 	makeIndividuals();
 	population_size_old = INITIALPOPULATIONSIZE;
 	population_size_new = 0;
-	/*FILE *popsize_file;
-	popsize_file = fopen("popsize.txt", "w+"); //TODO: Write function for file creation with filename as input + message that file has been created and where. Maybe one that reports pre-defined parameter values as well.
-	fprintf(popsize_file, "Time PopulationSize\n"); //Make a colnames row
-	FILE *density_file;
-	density_file = fopen("density.txt", "w+");
-	fprintf(density_file, "Position No_Inds LocalDensity\n"); //Make a colnames row*/
     for (int t = 0; t < TMAX; t++) {
-    	printf("\n Time: %d", t);
     	createLocalDensityMatrix();
-    	/*fprintf(density_file, "\nTime: %d\n", t);
-    	for (int pos = 0; pos < NPOS; pos++){
-    		fprintf(density_file, "\n%d %f+%f*i %f+%f*i", pos, creal(density[pos]), cimag(density[pos]), creal(kernel_density_backward[pos]), cimag(kernel_density_backward[pos]));
-    	}
-    	for (int index = 0; index < population_size_old; index++){
-			printf("\nPosition (x, y): %d %d", individuals_old[index].xpos, individuals_old[index].xpos);
-    	}*/
 		for (int i = 0; i < population_size_old; i++){
 			double probabilityOfEvent = genrand64_real2();
 			if (probabilityOfEvent > DEATHRATE){ //If individual does NOT die...
@@ -170,7 +156,7 @@ void createFFTWplans(void){
 	fftw_plan_kernel_density = fftw_plan_dft_2d(XMAX, YMAX, kernel_density_product, kernel_density_backward, FFTW_BACKWARD, FFTW_MEASURE);
 }
 
-//*** Code to make kernel function, taken from Laura's code ***// TODO: This should be a normal function
+//*** Code to make kernel function, taken (and slightly modified) from Laura's code. Can possibly be removed once normal function is tested and working correctly ***//
 
 /* This function makes the kernel using a step function. Code modified from Hilje's code.
  * If the number of rows and columns are not the same, the kernel function will form an ellipse instead of a circle. */
@@ -199,14 +185,14 @@ void MakeStepKernel(int scale)
     // Normalise the kernel
     for(int l = 0; l < NPOS; l++)
     {
-        step_kernel[l] = (DELTASPACE*DELTASPACE)*step_kernel[l] / totsum; //Q: Why times DELTASPACE^2 here? Fortran Kernels r. 103
+        step_kernel[l] = (DELTASPACE*DELTASPACE)*step_kernel[l] / totsum;
     }
 }
 
 //*** End of part taken from Laura's code ***//
 
 /**
- * Creates a normal kernel. Numbers lower than THRESHOLD are set to 0.
+ * Creates a normal kernel. Numbers lower than THRESHOLD are set to 0. This should equal line 34-61 in the Fortran kernels.f90 file.
  */
 void createNormalKernel(int scale){
 	double preFactor = 1.0/(2.0*(scale*DELTASPACE)*(scale*DELTASPACE));
@@ -226,11 +212,11 @@ void createNormalKernel(int scale){
 		for(int y = 0; y < YMAX; y++){
 			normal_kernel2D[index] = normal_kernel1D[x]*normal_kernel1D[y];
 			kernel_sum += normal_kernel2D[index];
-			index++; //Q: Is this equal to Fortran kernels r.54-56?
+			index++;
 		}
 	}
 	for(int i = 0; i < NPOS; i++){
-		normal_kernel2D[i] = DELTASPACE*DELTASPACE * normal_kernel2D[i]/kernel_sum; //Fortran kernels r.57
+		normal_kernel2D[i] = DELTASPACE*DELTASPACE * normal_kernel2D[i]/kernel_sum;
 	}
 }
 
@@ -326,7 +312,6 @@ double calculateBirthRate(int i){
 	double experienced_altruism = experiencedAltruism(i);
 		int position = individuals_old[i].xpos * XMAX + individuals_old[i].ypos; //Convert x and y coordinates of individual to find corresponding position in fftw_complex object
 		double local_density = kernel_density_backward[position];
-		//printf("\nLocal density: %f \n", local_density);
 		double benefit = (BMAX * experienced_altruism)/((BMAX/B0) + experienced_altruism);
 		double birth_rate;
 		if (individuals_old[i].phenotype == 0){ //Only individuals with phenotype 0 (A) pay altruism cost
@@ -371,7 +356,7 @@ double experiencedAltruism(int i){
  * i: The parent individual.
  */
 void reproduceIndividual(int i){
-	individuals_new[i+1] = individuals_old[i]; //child = parent BUT overwrite phenotype below
+	individuals_new[i+1] = individuals_old[i]; //Initially child = parent BUT overwrite phenotype below
 	population_size_new += 1;
 	double random_phenotype = genrand64_real2();
 	if (random_phenotype < individuals_old[i].p){ //p is probability that child has phenotype A (0)
@@ -435,7 +420,7 @@ void freeMemory(void){
 }
 
 /**
- * Old function to calculate local density experienced by input individual, roughly using a step function. To be removed once Fourier transform is working.
+ * Old function to calculate local density experienced by input individual, roughly using a step function. To be removed once Fourier transform is tested and working correctly.
  * i: The input individual.
  */
 double localDensity(int i){
