@@ -20,7 +20,6 @@
 void srand(unsigned int seed);
 void allocateMemory(void);
 void createFFTWplans(void);
-void MakeStepKernel(int); //This function is copied from Laura's code. Can perhaps be removed once createNormalKernel() is tested and working correctly
 void createNormalKernel(int);
 void makeIndividuals(void);
 int rand(void);
@@ -38,19 +37,19 @@ double localDensity(int); //! Currently unused, can be removed once FFT is teste
 
 //Define parameters TODO: Put in order of usage
 //!! NB: Set INITIALB and INITIALP to 0 for initial model (without phenotypic differentiation) !!
-#define TMAX 10
-#define DELTATIME 1 //Q: Only used for output?
-#define DELTASPACE 1
+#define TMAX 4
+#define DELTATIME 0.1 //Multiply rate by DELTATIME to get probability per timestep
+#define DELTASPACE 1 //Size of a position. This equals 1/resolution in the Fortran code.
 #define INITIALA 5
 #define INITIALB 0
 #define INITIALPOPULATIONSIZE INITIALA + INITIALB
-#define XMAX 5
-#define YMAX 5
+#define XMAX 10
+#define YMAX 10
 #define NPOS XMAX * YMAX
 #define INITIALP 1 //Set to 1 for only A offspring or 0 for only B offspring
 #define MAXSIZE 1000 //Maximum number of individuals in the population. Note that MAXSIZE can be larger than XMAX*YMAX because multiple individuals are allowed at the same position.
-#define DEATHRATE 0.1
-#define BIRTHRATE 0.1 //Baseline max birth rate, birth rate for non-altruist
+#define DEATHRATE 1
+#define BIRTHRATE 1 //Baseline max birth rate, birth rate for non-altruist
 #define ALTRUISMSCALE 1 //Consider (2*SCALE + 1)^2 fields
 #define COMPETITIONSCALE 1 //4
 #define MOVEMENTSCALE 1
@@ -58,8 +57,8 @@ double localDensity(int); //! Currently unused, can be removed once FFT is teste
 #define B0 1 //Basal benefit of altruism
 #define BMAX 5 //Maximum benefit of altruism
 #define K 40 //Carrying capacity
-#define THRESHOLD 0.000001 //Numbers lower than this are set to 0
-#define FIELDS 4
+#define THRESHOLD 0.0000000001 //Numbers lower than this are set to 0
+#define FIELDS 7 //Number of fields to take into account (in each direction) when creating the normal kernel
 
 //Declare structures
 struct Individual {
@@ -88,6 +87,8 @@ fftw_plan fftw_plan_kernel_density;
 
 struct Individual* individuals_old; //This is the 'old state'
 struct Individual* individuals_new; //This is the 'new state'
+struct Individual** individuals_old_ptr;
+struct Individual** individuals_new_ptr;
 
 //Main
 int main() {
@@ -104,12 +105,12 @@ int main() {
     	createLocalDensityMatrix();
 		for (int i = 0; i < population_size_old; i++){
 			double probabilityOfEvent = genrand64_real2();
-			if (probabilityOfEvent > DEATHRATE){ //If individual does NOT die...
+			if (probabilityOfEvent > DEATHRATE*DELTATIME){ //If individual does NOT die...
 				moveIndividual(i); //...Move it
 				individuals_new[i] = individuals_old[i];
 				population_size_new += 1; //...And add it to the population size of the new state.
 				double birth_rate = calculateBirthRate(i);
-				if (probabilityOfEvent < DEATHRATE + birth_rate){
+				if (probabilityOfEvent < DEATHRATE*DELTATIME + birth_rate*DELTATIME){
 					reproduceIndividual(i);
 					moveIndividual(i+1);
 				}
@@ -127,8 +128,8 @@ int main() {
  * Allocates memory for the arrays and fftw_complex objects used in the code.
  */
 void allocateMemory(void){
-    individuals_old = malloc(MAXSIZE * sizeof(*individuals_old));
-    individuals_new = malloc(MAXSIZE * sizeof(*individuals_new));
+    individuals_old = malloc(MAXSIZE * sizeof(struct Individual));
+    individuals_new = malloc(MAXSIZE * sizeof(struct Individual));
     if (individuals_old == NULL) {
         printf("ERROR: Memory for individuals_old not allocated.\n");
         exit(1);
@@ -156,50 +157,16 @@ void createFFTWplans(void){
 	fftw_plan_kernel_density = fftw_plan_dft_2d(XMAX, YMAX, kernel_density_product, kernel_density_backward, FFTW_BACKWARD, FFTW_MEASURE);
 }
 
-//*** Code to make kernel function, taken (and slightly modified) from Laura's code. Can possibly be removed once normal function is tested and working correctly ***//
-
-/* This function makes the kernel using a step function. Code modified from Hilje's code.
- * If the number of rows and columns are not the same, the kernel function will form an ellipse instead of a circle. */
-void MakeStepKernel(int scale)
-{
-    int x,y,dx,dy; // x and y will denote the 'x-coordinate' and 'y-coordinate' of the matrix, respectively, and dx, dy the distance to the focal point in the x- and y-direction, respectively.
-    double totsum = 0.0; // counter for summation of kernel values, will use this for normalisation later
-
-    // Fill the kernel, unnormalised
-    for(int l = 0; l < NPOS; l++) //Note: Always loop over same number as used in memory allocation!
-    {
-        // This looping over indices gives row-major order.
-        y = l/XMAX;     // int division! Always rounding down: this gives the quotient, which is the 'y coordinate'
-        x = l - y*XMAX; // this is the rest/leftover or 'x coordinate'
-        dx = (int) fmin(x, XMAX - x); // distance to focal point in x direction. Casting to int because we're only working with ints here, so the result should be an int anyway.
-        dy = (int) fmin(y, YMAX - y); // distance to focal point in y direction. Casting to int because we're only working with ints here, so the result should be an int anyway.
-        if( dx*dx + dy*dy < ( (int) (scale*DELTASPACE) * (scale*DELTASPACE) ) + 1 ) // Pythagoras
-        {
-            step_kernel[l] = 1.0 + 0.0 * I;
-            totsum = totsum + 1.0;
-        }
-        else
-            step_kernel[l] = 0.0 + 0.0 * I;
-    }
-
-    // Normalise the kernel
-    for(int l = 0; l < NPOS; l++)
-    {
-        step_kernel[l] = (DELTASPACE*DELTASPACE)*step_kernel[l] / totsum;
-    }
-}
-
-//*** End of part taken from Laura's code ***//
 
 /**
  * Creates a normal kernel. Numbers lower than THRESHOLD are set to 0. This should equal line 34-61 in the Fortran kernels.f90 file.
  */
 void createNormalKernel(int scale){
-	double preFactor = 1.0/(2.0*(scale*DELTASPACE)*(scale*DELTASPACE));
+	double preFactor = 1.0/(2.0*(scale*(1/DELTASPACE))*(scale*(1/DELTASPACE)));
 	for(int x = 0; x < XMAX; x++){
 		double exp_counter = 0.0;
 		for(int field = -FIELDS; field < FIELDS; field++){
-			exp_counter += exp(-preFactor * ((x + field*XMAX)*(x + field*XMAX)));
+			exp_counter += exp(-preFactor * ((x + field*XMAX)*(x + field*XMAX))); //TODO: Change summation strategy so small numbers don't disappear
 		}
 		if(exp_counter < THRESHOLD){
 			exp_counter = 0;
@@ -216,7 +183,7 @@ void createNormalKernel(int scale){
 		}
 	}
 	for(int i = 0; i < NPOS; i++){
-		normal_kernel2D[i] = DELTASPACE*DELTASPACE * normal_kernel2D[i]/kernel_sum;
+		normal_kernel2D[i] = (1/DELTASPACE)*(1/DELTASPACE) * normal_kernel2D[i]/kernel_sum;
 	}
 }
 
@@ -273,7 +240,7 @@ void fillDensityMatrix(){
 }
 
 /**
- * Assigns a new position in the field to the input individual.
+ * Assigns a new position in the field to the input individual. TODO: Change/replace this function to use a diffusion process (using DELTATIME)
  * i: The individual to move.
  */
 void moveIndividual(int i){ //TODO: Try using modulo here
@@ -282,23 +249,23 @@ void moveIndividual(int i){ //TODO: Try using modulo here
 	if (move_x < MOVE){
 		double random = genrand64_real2();
 		if (random < 0.5){
-			if (individuals_old[i].xpos+MOVEMENTSCALE*DELTASPACE <= XMAX){
-				individuals_new[i].xpos = individuals_old[i].xpos+MOVEMENTSCALE*DELTASPACE;
+			if (individuals_old[i].xpos+MOVEMENTSCALE*(1/DELTASPACE) <= XMAX){
+				individuals_new[i].xpos = individuals_old[i].xpos+MOVEMENTSCALE*(1/DELTASPACE);
 			}
 		}
-		else if (individuals_old[i].xpos-MOVEMENTSCALE*DELTASPACE > 0){
-			individuals_new[i].xpos = individuals_old[i].xpos-MOVEMENTSCALE*DELTASPACE;
+		else if (individuals_old[i].xpos-MOVEMENTSCALE*(1/DELTASPACE) > 0){
+			individuals_new[i].xpos = individuals_old[i].xpos-MOVEMENTSCALE*(1/DELTASPACE);
 		}
 	}
 	if (move_y < MOVE){
 		double random = genrand64_real2();
 		if (random < 0.5){
-			if (individuals_old[i].ypos+MOVEMENTSCALE*DELTASPACE <= YMAX){
-				individuals_new[i].ypos = individuals_old[i].ypos+MOVEMENTSCALE*DELTASPACE;
+			if (individuals_old[i].ypos+MOVEMENTSCALE*(1/DELTASPACE) <= YMAX){
+				individuals_new[i].ypos = individuals_old[i].ypos+MOVEMENTSCALE*(1/DELTASPACE);
 			}
 		}
-		else if (individuals_old[i].ypos-MOVEMENTSCALE*DELTASPACE > 0){
-			individuals_new[i].ypos = individuals_old[i].ypos-MOVEMENTSCALE*DELTASPACE;
+		else if (individuals_old[i].ypos-MOVEMENTSCALE*(1/DELTASPACE) > 0){
+			individuals_new[i].ypos = individuals_old[i].ypos-MOVEMENTSCALE*(1/DELTASPACE);
 		}
 	}
 }
@@ -336,8 +303,8 @@ double experiencedAltruism(int i){
 	int y_individual = individuals_old[i].ypos;
 	double cumulative_altruism = 0.0;
 	//Note that multiple individuals can be present in one x,y field. Non-existing fields are now also checked. But doesn't matter for now because it should be done using FFT anyway.
-	for (int x = x_individual-ALTRUISMSCALE*DELTASPACE; x < x_individual+ALTRUISMSCALE*DELTASPACE; x++){ //Loop over all x,y positions within scale from individual
-		for (int y = y_individual-ALTRUISMSCALE*DELTASPACE; y < y_individual+ALTRUISMSCALE*DELTASPACE; y++){
+	for (int x = x_individual-ALTRUISMSCALE*(1/DELTASPACE); x < x_individual+ALTRUISMSCALE*(1/DELTASPACE); x++){ //Loop over all x,y positions within scale from individual
+		for (int y = y_individual-ALTRUISMSCALE*(1/DELTASPACE); y < y_individual+ALTRUISMSCALE*(1/DELTASPACE); y++){
 			for (int potential_neighbor_index = 0; potential_neighbor_index < MAXSIZE; potential_neighbor_index++){ //Loop over all individuals
 				struct Individual potential_neighbor = individuals_old[potential_neighbor_index];
 				if (potential_neighbor.phenotype == 0){ //Only neighbors with phenotype 0 (A) can contribute
@@ -387,11 +354,12 @@ void checkPopulationSize(){
  * Updates the old and new state for the next timestep, i.e. old individuals are replaced by new individuals. Resets all pointers with timestep-specific information.
  */
 void updateStates(){
-	memset(individuals_old, 0, MAXSIZE * sizeof(*individuals_old)); //This resets the individuals_old array, setting all struct variables to 0
-	for(int i = 0; i < population_size_new; i++){ //New individuals become old individuals TODO: Can this be made more efficient? Do something smart with pointers?
-		individuals_old[i] = individuals_new[i];
-	}
-	memset(individuals_new, 0, MAXSIZE * sizeof(*individuals_new)); //Reset the individuals_new array
+	individuals_old_ptr = &individuals_old; //Make pointers to pointers, this is necessary to swap old and new individuals
+	individuals_new_ptr = &individuals_new;
+	memset(individuals_old, 0, MAXSIZE * sizeof(*individuals_old)); //Delete the old individuals, i.e. set array to 0
+	struct Individual* temp = *individuals_old_ptr; //Make a temp ptr that points to the old individuals, now filled with 0s
+	*individuals_old_ptr = *individuals_new_ptr; //New individuals become old individuals
+	*individuals_new_ptr = temp; //Reset the new individuals for the next state by pointing to the block with 0s
 	population_size_old = population_size_new; //Switch to new state, including all individuals that were born or didn't die in the previous timestep
 	population_size_new = 0; //Reset value of new state population size
 	memset(density, 0, NPOS * sizeof(*density));
@@ -431,8 +399,8 @@ double localDensity(int i){
 	int x_individual = individuals_old[i].xpos;
 	int y_individual = individuals_old[i].ypos;
 	double cumulative_density = 0.0;
-	for (int x = x_individual-COMPETITIONSCALE*DELTASPACE; x < x_individual+COMPETITIONSCALE*DELTASPACE; x++){
-		for (int y = y_individual-COMPETITIONSCALE*DELTASPACE; y < y_individual+COMPETITIONSCALE*DELTASPACE; y++){
+	for (int x = x_individual-COMPETITIONSCALE*(1/DELTASPACE); x < x_individual+COMPETITIONSCALE*(1/DELTASPACE); x++){
+		for (int y = y_individual-COMPETITIONSCALE*(1/DELTASPACE); y < y_individual+COMPETITIONSCALE*(1/DELTASPACE); y++){
 			for (int potential_neighbor_index = 0; potential_neighbor_index < MAXSIZE; potential_neighbor_index++){
 				struct Individual potential_neighbor = individuals_old[potential_neighbor_index];
 				if (potential_neighbor.xpos == x && potential_neighbor.ypos == y){
