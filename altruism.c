@@ -20,31 +20,31 @@
 void srand(unsigned int seed);
 void allocateMemory(void);
 void createFFTWplans(void);
-void createNormalKernel(int);
+void createNormalKernel(int, fftw_complex*);
 void makeIndividuals(void);
 int rand(void);
 void createLocalDensityMatrix(void);
 void fillDensityMatrix(void);
+void createExperiencedAltruismMatrix(void);
+void fillAltruismMatrix(void);
 void moveIndividual(int);
 double calculateBirthRate(int);
-double experiencedAltruism(int);
 void reproduceIndividual(int);
 void checkPopulationSize(void);
 void updateStates(void);
 void destroyFFTWplans(void);
 void freeMemory(void);
-double localDensity(int); //! Currently unused, can be removed once FFT is tested and working correctly !
 
 //Define parameters TODO: Put in order of usage
-//!! NB: Set INITIALB and INITIALP to 0 for initial model (without phenotypic differentiation) !!
-#define TMAX 4
+//!! NB: Set INITIALB  to 0 and INITIALP to 1 for initial model (without phenotypic differentiation) !!
+#define TMAX 10
 #define DELTATIME 0.1 //Multiply rate by DELTATIME to get probability per timestep
 #define DELTASPACE 1 //Size of a position. This equals 1/resolution in the Fortran code.
 #define INITIALA 5
 #define INITIALB 0
 #define INITIALPOPULATIONSIZE INITIALA + INITIALB
-#define XMAX 10
-#define YMAX 10
+#define XMAX 5
+#define YMAX 5
 #define NPOS XMAX * YMAX
 #define INITIALP 1 //Set to 1 for only A offspring or 0 for only B offspring
 #define MAXSIZE 1000 //Maximum number of individuals in the population. Note that MAXSIZE can be larger than XMAX*YMAX because multiple individuals are allowed at the same position.
@@ -72,23 +72,32 @@ struct Individual {
 //Declare global variables
 int population_size_old;
 int population_size_new;
-fftw_complex* step_kernel;
-fftw_complex* normal_kernel1D;
-fftw_complex* normal_kernel2D;
-fftw_complex* kernel_forward;
+fftw_complex* normal_for_density;
+fftw_complex* normal_for_density_forward;
+fftw_complex* normal_for_altruism;
+fftw_complex* normal_for_altruism_forward;
 fftw_complex* density;
 fftw_complex* density_forward;
-fftw_complex* kernel_density_product;
-fftw_complex* kernel_density_backward;
+fftw_complex* normal_forward_density_forward_product;
+fftw_complex* normal_density_convolution;
+fftw_complex* altruism;
+fftw_complex* altruism_forward;
+fftw_complex* normal_forward_altruism_forward_product;
+fftw_complex* normal_altruism_convolution;
 
-fftw_plan fftw_plan_kernel;
-fftw_plan fftw_plan_density;
-fftw_plan fftw_plan_kernel_density;
+//fftw_plan names correspond to the fftw_complex objects their output is stored in
+fftw_plan fftw_plan_normal_for_density_forward;
+fftw_plan fftw_plan_normal_for_altruism_forward;
+fftw_plan fftw_plan_density_forward;
+fftw_plan fftw_plan_normal_density_convolution;
+fftw_plan fftw_plan_altruism_forward;
+fftw_plan fftw_plan_normal_altruism_convolution;
 
 struct Individual* individuals_old; //This is the 'old state'
 struct Individual* individuals_new; //This is the 'new state'
 struct Individual** individuals_old_ptr;
 struct Individual** individuals_new_ptr;
+
 
 //Main
 int main() {
@@ -96,13 +105,16 @@ int main() {
 	init_genrand64(time(0));
 	allocateMemory();
 	createFFTWplans();
-	createNormalKernel(COMPETITIONSCALE); //Create and execute only once, same for each timestep
-	fftw_execute(fftw_plan_kernel);
+	createNormalKernel(COMPETITIONSCALE, normal_for_density); //Create and execute only once, same for each timestep
+	createNormalKernel(ALTRUISMSCALE, normal_for_altruism);
+	fftw_execute(fftw_plan_normal_for_density_forward);
+	fftw_execute(fftw_plan_normal_for_altruism_forward);
 	makeIndividuals();
 	population_size_old = INITIALPOPULATIONSIZE;
 	population_size_new = 0;
     for (int t = 0; t < TMAX; t++) {
     	createLocalDensityMatrix();
+    	createExperiencedAltruismMatrix();
 		for (int i = 0; i < population_size_old; i++){
 			double probabilityOfEvent = genrand64_real2();
 			if (probabilityOfEvent > DEATHRATE*DELTATIME){ //If individual does NOT die...
@@ -138,30 +150,39 @@ void allocateMemory(void){
         printf("ERROR: Memory for individuals_new not allocated.\n");
         exit(1);
     }
-    step_kernel = fftw_alloc_complex(NPOS);
-	normal_kernel1D = fftw_alloc_complex(XMAX);
-	normal_kernel2D = fftw_alloc_complex(NPOS);
-    kernel_forward = fftw_alloc_complex(NPOS);
+	normal_for_density = fftw_alloc_complex(NPOS);
+	normal_for_altruism = fftw_alloc_complex(NPOS);
+    normal_for_density_forward = fftw_alloc_complex(NPOS);
+    normal_for_altruism_forward = fftw_alloc_complex(NPOS);
     density = fftw_alloc_complex(NPOS);
     density_forward = fftw_alloc_complex(NPOS);
-    kernel_density_product = fftw_alloc_complex(NPOS);
-    kernel_density_backward = fftw_alloc_complex(NPOS);
+    normal_forward_density_forward_product = fftw_alloc_complex(NPOS);
+    normal_density_convolution = fftw_alloc_complex(NPOS);
+    altruism = fftw_alloc_complex(NPOS);
+    altruism_forward = fftw_alloc_complex(NPOS);
+    normal_forward_altruism_forward_product = fftw_alloc_complex(NPOS);
+    normal_altruism_convolution = fftw_alloc_complex(NPOS);
 }
 
 /**
  * Creates plans for the Fourier transformations used in the code.
  */
 void createFFTWplans(void){
-	fftw_plan_kernel = fftw_plan_dft_2d(XMAX, YMAX, normal_kernel2D, kernel_forward, FFTW_FORWARD, FFTW_MEASURE);
-	fftw_plan_density = fftw_plan_dft_2d(XMAX, YMAX, density, density_forward, FFTW_FORWARD, FFTW_MEASURE);
-	fftw_plan_kernel_density = fftw_plan_dft_2d(XMAX, YMAX, kernel_density_product, kernel_density_backward, FFTW_BACKWARD, FFTW_MEASURE);
+	fftw_plan_normal_for_density_forward = fftw_plan_dft_2d(XMAX, YMAX, normal_for_density, normal_for_density_forward, FFTW_FORWARD, FFTW_MEASURE);
+	fftw_plan_normal_for_altruism_forward = fftw_plan_dft_2d(XMAX, YMAX, normal_for_altruism, normal_for_altruism_forward, FFTW_FORWARD, FFTW_MEASURE);
+	fftw_plan_density_forward = fftw_plan_dft_2d(XMAX, YMAX, density, density_forward, FFTW_FORWARD, FFTW_MEASURE);
+	fftw_plan_normal_density_convolution = fftw_plan_dft_2d(XMAX, YMAX, normal_forward_density_forward_product, normal_density_convolution, FFTW_BACKWARD, FFTW_MEASURE);
+	fftw_plan_altruism_forward = fftw_plan_dft_2d(XMAX, YMAX, altruism, altruism_forward, FFTW_FORWARD, FFTW_MEASURE);
+	fftw_plan_normal_altruism_convolution = fftw_plan_dft_2d(XMAX, YMAX, normal_forward_altruism_forward_product, normal_altruism_convolution, FFTW_BACKWARD, FFTW_MEASURE);
 }
 
 
 /**
  * Creates a normal kernel. Numbers lower than THRESHOLD are set to 0. This should equal line 34-61 in the Fortran kernels.f90 file.
  */
-void createNormalKernel(int scale){
+void createNormalKernel(int scale, fftw_complex* normal_kernel2D){
+	fftw_complex* normal_kernel1D;
+	normal_kernel1D = fftw_alloc_complex(XMAX);
 	double preFactor = 1.0/(2.0*(scale*(1/DELTASPACE))*(scale*(1/DELTASPACE)));
 	for(int x = 0; x < XMAX; x++){
 		double exp_counter = 0.0;
@@ -185,6 +206,7 @@ void createNormalKernel(int scale){
 	for(int i = 0; i < NPOS; i++){
 		normal_kernel2D[i] = (1/DELTASPACE)*(1/DELTASPACE) * normal_kernel2D[i]/kernel_sum;
 	}
+	fftw_free(normal_kernel1D);
 }
 
 /**
@@ -206,22 +228,24 @@ void makeIndividuals(){
 }
 
 /**
- * Creates a matrix with the local density at each position in the field using convolution of the kernel created above and the density matrix created in fillDensityMatrix().
+ * Creates a matrix with the local density at each position in the field using convolution of the normal kernel created above and the density matrix created in fillDensityMatrix().
+ * //TODO: Create a convolution() function with two input matrices (altruism or density, and kernel) and two input plans, that can be used instead of createLocalDensityMatrix and createExperiencedAltruismMatrix
  */
 void createLocalDensityMatrix(){
 	fillDensityMatrix();
-	fftw_execute(fftw_plan_density); //Forward Fourier of density matrix
+	fftw_execute(fftw_plan_density_forward); //Forward Fourier of density matrix
 	for (int position = 0; position < NPOS; position++){ //Multiply forward-transformed kernel and density matrices
-	    kernel_density_product[position] = kernel_forward[position] * density_forward[position];
+	    normal_forward_density_forward_product[position] = normal_for_density_forward[position] * density_forward[position];
 	}
-	fftw_execute(fftw_plan_kernel_density); //Convolution: Inverse Fourier of product of forward-transformed kernel and density matrices
-	for (int element; element < NPOS; element++){
-		kernel_density_backward[element] = kernel_density_backward[element]/NPOS; //Output of FFTW_BACKWARD is automatically multiplied by number of elements, so divide by number of elements (NPOS) to get local density
+	fftw_execute(fftw_plan_normal_density_convolution); //Convolution: Inverse Fourier of product of forward-transformed kernel and density matrices
+	for (int element = 0; element < NPOS; element++){
+		normal_density_convolution[element] = normal_density_convolution[element] / creal(NPOS); //Output of FFTW_BACKWARD is automatically multiplied by number of elements, so divide by number of elements (NPOS) to get local density
 	}
 }
 
 /**
  * Creates a matrix with the absolute number of individuals at each position in the field.
+ * //TODO: Largely the same as fillAltruismMatrix(), it's probably more elegant to make one function for both
  */
 void fillDensityMatrix(){
 	int position = 0;
@@ -234,6 +258,42 @@ void fillDensityMatrix(){
 				}
 			}
 			density[position] = creal(counter);
+			position += 1;
+		}
+	}
+}
+
+/**
+ * Creates a matrix with the experienced level of altruism at each position using convolution of the normal kernel and the altruism matrix created in fillAltruismMatrix().
+ * Similar to the creation of the local density matrix.
+ */
+void createExperiencedAltruismMatrix(){
+	fillAltruismMatrix();
+	fftw_execute(fftw_plan_altruism_forward); //Forward Fourier of the altruism matrix
+	for (int position = 0; position < NPOS; position++){
+		normal_forward_altruism_forward_product[position] = normal_for_altruism_forward[position] * altruism_forward[position];
+	}
+	fftw_execute(fftw_plan_normal_altruism_convolution); //Convolution
+	for (int element = 0; element < NPOS; element++){
+		normal_altruism_convolution[element] = normal_altruism_convolution[element] / creal(NPOS);
+	}
+}
+
+/**
+ * Creates a matrix with for each position in the field the cumulative level of altruism of the individuals at that position.
+ * Similar to the creation of the density matrix.
+ */
+void fillAltruismMatrix(){
+	int position = 0;
+	for (int x = 1; x < XMAX+1; x++){
+		for (int y = 1; y < YMAX+1; y++){
+			double cumulative_altruism = 0.0;
+			for (int index = 0; index < population_size_old; index++){
+				if (individuals_old[index].xpos == x & individuals_old[index].ypos == y){
+					cumulative_altruism += individuals_old[index].altruism;
+				}
+			}
+			altruism[position] = creal(cumulative_altruism);
 			position += 1;
 		}
 	}
@@ -276,46 +336,21 @@ void moveIndividual(int i){ //TODO: Try using modulo here
  * returns: The birth rate of the individual.
  */
 double calculateBirthRate(int i){
-	double experienced_altruism = experiencedAltruism(i);
-		int position = individuals_old[i].xpos * XMAX + individuals_old[i].ypos; //Convert x and y coordinates of individual to find corresponding position in fftw_complex object
-		double local_density = kernel_density_backward[position];
-		double benefit = (BMAX * experienced_altruism)/((BMAX/B0) + experienced_altruism);
-		double birth_rate;
-		if (individuals_old[i].phenotype == 0){ //Only individuals with phenotype 0 (A) pay altruism cost
-			birth_rate = BIRTHRATE * (1.0 - individuals_old[i].altruism + benefit) * (1.0 - (local_density/K));
-		}
-		else{
-			birth_rate = BIRTHRATE * (1.0 + benefit) * (1.0 - (local_density/K));
-		}
-		if (birth_rate < 0){
-			birth_rate = 0; //Negative birth rates are set to 0
-		}
-		return birth_rate;
-}
-
-/**
- * Calculates the level of altruism experienced by the input individual. TODO: Use fftw here to calculate convolution of positions + kernel to derive experienced altruism
- * i: The individual whose experienced altruism is calculated.
- * returns: The level of altruism experienced by the input individual.
- */
-double experiencedAltruism(int i){
-	int x_individual = individuals_old[i].xpos;
-	int y_individual = individuals_old[i].ypos;
-	double cumulative_altruism = 0.0;
-	//Note that multiple individuals can be present in one x,y field. Non-existing fields are now also checked. But doesn't matter for now because it should be done using FFT anyway.
-	for (int x = x_individual-ALTRUISMSCALE*(1/DELTASPACE); x < x_individual+ALTRUISMSCALE*(1/DELTASPACE); x++){ //Loop over all x,y positions within scale from individual
-		for (int y = y_individual-ALTRUISMSCALE*(1/DELTASPACE); y < y_individual+ALTRUISMSCALE*(1/DELTASPACE); y++){
-			for (int potential_neighbor_index = 0; potential_neighbor_index < MAXSIZE; potential_neighbor_index++){ //Loop over all individuals
-				struct Individual potential_neighbor = individuals_old[potential_neighbor_index];
-				if (potential_neighbor.phenotype == 0){ //Only neighbors with phenotype 0 (A) can contribute
-					if (potential_neighbor.xpos == x && potential_neighbor.ypos == y){
-						cumulative_altruism += potential_neighbor.altruism; //If so, get their level of altruism
-					}
-				}
-			}
-		}
+	int position = individuals_old[i].xpos * XMAX + individuals_old[i].ypos; //Convert x and y coordinates of individual to find corresponding position in fftw_complex object
+	double local_density = normal_density_convolution[position];
+	double experienced_altruism = normal_altruism_convolution[position];
+	double benefit = (BMAX * experienced_altruism)/((BMAX/B0) + experienced_altruism);
+	double birth_rate;
+	if (individuals_old[i].phenotype == 0){ //Only individuals with phenotype 0 (A) pay altruism cost
+		birth_rate = BIRTHRATE * (1.0 - individuals_old[i].altruism + benefit) * (1.0 - (local_density/K));
 	}
-	return cumulative_altruism;
+	else{
+		birth_rate = BIRTHRATE * (1.0 + benefit) * (1.0 - (local_density/K));
+	}
+	if (birth_rate < 0){
+		birth_rate = 0; //Negative birth rates are set to 0
+	}
+	return birth_rate;
 }
 
 /**
@@ -364,17 +399,24 @@ void updateStates(){
 	population_size_new = 0; //Reset value of new state population size
 	memset(density, 0, NPOS * sizeof(*density));
 	memset(density_forward, 0, NPOS * sizeof(*density_forward));
-	memset(kernel_density_product, 0, NPOS * sizeof(*kernel_density_product));
-	memset(kernel_density_backward, 0, NPOS * sizeof(*kernel_density_backward));
+	memset(normal_forward_density_forward_product, 0, NPOS * sizeof(*normal_forward_density_forward_product));
+	memset(normal_density_convolution, 0, NPOS * sizeof(*normal_density_convolution));
+	memset(altruism, 0, NPOS * sizeof(*altruism));
+	memset(altruism_forward, 0, NPOS * sizeof(*altruism_forward));
+	memset(normal_forward_altruism_forward_product, 0, NPOS * sizeof(*normal_forward_altruism_forward_product));
+	memset(normal_altruism_convolution, 0, NPOS * sizeof(*normal_altruism_convolution));
 }
 
 /**
  * Destroys all plans created for the Fourier transformations in createFFTWplans().
  */
 void destroyFFTWplans(void){
-	fftw_destroy_plan(fftw_plan_kernel);
-	fftw_destroy_plan(fftw_plan_density);
-	fftw_destroy_plan(fftw_plan_kernel_density);
+	fftw_destroy_plan(fftw_plan_normal_for_density_forward);
+	fftw_destroy_plan(fftw_plan_normal_for_altruism_forward);
+	fftw_destroy_plan(fftw_plan_density_forward);
+	fftw_destroy_plan(fftw_plan_normal_density_convolution);
+	fftw_destroy_plan(fftw_plan_altruism_forward);
+	fftw_destroy_plan(fftw_plan_normal_altruism_convolution);
 }
 
 /**
@@ -383,32 +425,16 @@ void destroyFFTWplans(void){
 void freeMemory(void){
 	free(individuals_old);
 	free(individuals_new);
-	fftw_free(step_kernel);
-	fftw_free(kernel_forward);
+	fftw_free(normal_for_density);
+	fftw_free(normal_for_altruism);
+	fftw_free(normal_for_density_forward);
+	fftw_free(normal_for_altruism_forward);
 	fftw_free(density);
 	fftw_free(density_forward);
-	fftw_free(kernel_density_product);
-	fftw_free(kernel_density_backward);
+	fftw_free(normal_forward_density_forward_product);
+	fftw_free(normal_density_convolution);
+	fftw_free(altruism);
+	fftw_free(altruism_forward);
+	fftw_free(normal_forward_altruism_forward_product);
+	fftw_free(normal_altruism_convolution);
 }
-
-/**
- * Old function to calculate local density experienced by input individual, roughly using a step function. To be removed once Fourier transform is tested and working correctly.
- * i: The input individual.
- */
-double localDensity(int i){
-	int x_individual = individuals_old[i].xpos;
-	int y_individual = individuals_old[i].ypos;
-	double cumulative_density = 0.0;
-	for (int x = x_individual-COMPETITIONSCALE*(1/DELTASPACE); x < x_individual+COMPETITIONSCALE*(1/DELTASPACE); x++){
-		for (int y = y_individual-COMPETITIONSCALE*(1/DELTASPACE); y < y_individual+COMPETITIONSCALE*(1/DELTASPACE); y++){
-			for (int potential_neighbor_index = 0; potential_neighbor_index < MAXSIZE; potential_neighbor_index++){
-				struct Individual potential_neighbor = individuals_old[potential_neighbor_index];
-				if (potential_neighbor.xpos == x && potential_neighbor.ypos == y){
-						cumulative_density += 1; //Should perhaps be scaled
-				}
-			}
-		}
-	}
-	return cumulative_density;
-}
-
