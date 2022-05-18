@@ -15,8 +15,8 @@
 #include <complex.h>
 #include <fftw3.h>
 
-
 //Declare functions (in order of usage)
+//Functions used in main():
 void srand(unsigned int seed);
 void allocateMemory(void);
 void createFFTWplans(void);
@@ -30,32 +30,40 @@ void fillAltruismMatrix(void);
 void moveIndividual(int);
 double calculateBirthRate(int);
 void reproduceIndividual(int);
+double randomExponential(void);
 void checkPopulationSize(void);
 void updateStates(void);
 void destroyFFTWplans(void);
 void freeMemory(void);
+//Functions used to create output files:
+void printParametersToFile(FILE*);
+void printMeanAltruismToFile(FILE*, int);
+double sumMatrix(fftw_complex*);
 
 //Define parameters TODO: Put in order of usage
-//!! NB: Set INITIALB  to 0 and INITIALP to 1 for initial model (without phenotypic differentiation) !!
-#define TMAX 10
+//!! NB: Set INITIALB to 0 and INITIALP to 1 for initial model (without phenotypic differentiation) !!
+#define TMAX 200
 #define DELTATIME 0.1 //Multiply rate by DELTATIME to get probability per timestep
-#define DELTASPACE 1 //Size of a position. This equals 1/resolution in the Fortran code.
-#define INITIALA 5
+#define DELTASPACE 4.0 //Size of a position. This equals 1/resolution in the Fortran code.
+#define INITIALA 100
 #define INITIALB 0
 #define INITIALPOPULATIONSIZE INITIALA + INITIALB
 #define XMAX 5
 #define YMAX 5
 #define NPOS XMAX * YMAX
+#define INITIALALTRUISM 0.0 //Once evolution (mutation) is implemented, this should probably be 0.
 #define INITIALP 1 //Set to 1 for only A offspring or 0 for only B offspring
 #define MAXSIZE 1000 //Maximum number of individuals in the population. Note that MAXSIZE can be larger than XMAX*YMAX because multiple individuals are allowed at the same position.
-#define DEATHRATE 1
-#define BIRTHRATE 1 //Baseline max birth rate, birth rate for non-altruist
+#define DEATHRATE 1.0
+#define BIRTHRATE 1.0 //Baseline max birth rate, birth rate for non-altruist
 #define ALTRUISMSCALE 1 //Consider (2*SCALE + 1)^2 fields
-#define COMPETITIONSCALE 1 //4
+#define COMPETITIONSCALE 4 //4
+#define MUTATIONPROBABILITY 0.001
+#define MEANMUTSIZEALTRUISM 0.005
 #define MOVEMENTSCALE 1
-#define MOVE 0.5 //Probability to move in x direction = probability to move in y direction
-#define B0 1 //Basal benefit of altruism
-#define BMAX 5 //Maximum benefit of altruism
+#define MOVE 0 //Probability to move in x direction = probability to move in y direction
+#define B0 1.0 //Basal benefit of altruism
+#define BMAX 5.0 //Maximum benefit of altruism
 #define K 40 //Carrying capacity
 #define THRESHOLD 0.0000000001 //Numbers lower than this are set to 0
 #define FIELDS 7 //Number of fields to take into account (in each direction) when creating the normal kernel
@@ -98,6 +106,9 @@ struct Individual* individuals_new; //This is the 'new state'
 struct Individual** individuals_old_ptr;
 struct Individual** individuals_new_ptr;
 
+int newborns;
+int deaths;
+int i_new;
 
 //Main
 int main() {
@@ -112,19 +123,29 @@ int main() {
 	makeIndividuals();
 	population_size_old = INITIALPOPULATIONSIZE;
 	population_size_new = 0;
+	//FILE *outputfile;
+	//outputfile = fopen("filename.txt", "w+");
     for (int t = 0; t < TMAX; t++) {
+    	//printMeanAltruismToFile(outputfile, t);
+    	newborns = 0;
+		deaths = 0;
     	createLocalDensityMatrix();
     	createExperiencedAltruismMatrix();
 		for (int i = 0; i < population_size_old; i++){
+			i_new = i + newborns - deaths; //The index of i in the new timestep, taking into account births and deaths the current timestep
 			double probabilityOfEvent = genrand64_real2();
-			if (probabilityOfEvent > DEATHRATE*DELTATIME){ //If individual does NOT die...
+			if (probabilityOfEvent < DEATHRATE*DELTATIME){ //If individual dies...
+				deaths += 1;
+			}
+			else{ //If individual doesn't die...
 				moveIndividual(i); //...Move it
-				individuals_new[i] = individuals_old[i];
+				individuals_new[i_new] = individuals_old[i];
 				population_size_new += 1; //...And add it to the population size of the new state.
 				double birth_rate = calculateBirthRate(i);
 				if (probabilityOfEvent < DEATHRATE*DELTATIME + birth_rate*DELTATIME){
 					reproduceIndividual(i);
-					moveIndividual(i+1);
+					moveIndividual(i_new + 1); //Index of child = index of parent in the new state + 1
+					newborns += 1;
 				}
 			}
 		}
@@ -216,7 +237,7 @@ void makeIndividuals(){
 	for (int i = 0; i < INITIALPOPULATIONSIZE; i++){ //First fill in all initial parameters that are the same for As and Bs
 		individuals_old[i].xpos = rand() % XMAX+1;;
 		individuals_old[i].ypos = rand() % YMAX+1;
-		individuals_old[i].altruism = genrand64_real2(); //TODO: Once evolution (mutation) is implemented, this should probably be 0. Now random to at least have variation.
+		individuals_old[i].altruism = INITIALALTRUISM;
 		individuals_old[i].p = INITIALP;
 	}
 	for (int i = 0; i < INITIALA; i++){
@@ -249,17 +270,22 @@ void createLocalDensityMatrix(){
  */
 void fillDensityMatrix(){
 	int position = 0;
+	int sum_counter = 0;
 	for (int x = 1; x < XMAX+1; x++){ //Add 1 to let x and y correspond to actual x and y positions of the individuals
 		for (int y = 1; y < YMAX+1; y++){
 			int counter = 0;
 			for (int index = 0; index < population_size_old; index++){
 				if (individuals_old[index].xpos == x & individuals_old[index].ypos == y){
 					counter += 1;
+					sum_counter += 1;
 				}
 			}
 			density[position] = creal(counter);
 			position += 1;
 		}
+	}
+	if(sum_counter != population_size_old){
+		printf("Problem: number of individuals in density matrix (%d) doesn't match population size (%d)!\n", sum_counter, population_size_old); //TODO: This can be removed after all required tests are successful
 	}
 }
 
@@ -340,13 +366,8 @@ double calculateBirthRate(int i){
 	double local_density = normal_density_convolution[position];
 	double experienced_altruism = normal_altruism_convolution[position];
 	double benefit = (BMAX * experienced_altruism)/((BMAX/B0) + experienced_altruism);
-	double birth_rate;
-	if (individuals_old[i].phenotype == 0){ //Only individuals with phenotype 0 (A) pay altruism cost
-		birth_rate = BIRTHRATE * (1.0 - individuals_old[i].altruism + benefit) * (1.0 - (local_density/K));
-	}
-	else{
-		birth_rate = BIRTHRATE * (1.0 + benefit) * (1.0 - (local_density/K));
-	}
+	double cost = (1.0 - individuals_old[i].phenotype) * individuals_old[i].altruism; //Only individuals with phenotype 0 (A) pay altruism cost
+	double birth_rate = BIRTHRATE * (1.0 - cost + benefit) * (1.0 - (local_density/K));
 	if (birth_rate < 0){
 		birth_rate = 0; //Negative birth rates are set to 0
 	}
@@ -358,15 +379,39 @@ double calculateBirthRate(int i){
  * i: The parent individual.
  */
 void reproduceIndividual(int i){
-	individuals_new[i+1] = individuals_old[i]; //Initially child = parent BUT overwrite phenotype below
+	individuals_new[i_new+1] = individuals_old[i]; //Initially child = parent BUT overwrite phenotype below
 	population_size_new += 1;
+	double random_altruism = genrand64_real2();
+	if(random_altruism < MUTATIONPROBABILITY){ //If mutation occurs...
+		double delta_altruism;
+		double random_direction = genrand64_real2(); //...Randomly decide direction of mutation
+		if(random_direction < 0.5){
+			delta_altruism = -MEANMUTSIZEALTRUISM * randomExponential(); //...Calculate change in altruism level due to mutation
+		}
+		else{
+			delta_altruism = MEANMUTSIZEALTRUISM * randomExponential();
+		}
+		individuals_new[i_new+1].altruism = individuals_old[i].altruism + delta_altruism; //...Calculate altruism level of child
+		if(individuals_new[i_new+1].altruism < 0){
+			individuals_new[i_new+1].altruism = 0.0;
+		}
+	}
 	double random_phenotype = genrand64_real2();
 	if (random_phenotype < individuals_old[i].p){ //p is probability that child has phenotype A (0)
-		individuals_new[i+1].phenotype = 0;
+		individuals_new[i_new+1].phenotype = 0;
 	}
 	else{
-		individuals_new[i+1].phenotype = 1;
+		individuals_new[i_new+1].phenotype = 1;
 	}
+}
+
+/**
+ * Draws a random number from an exponential distribution.
+ */
+double randomExponential(void){
+	double random = genrand64_real2();
+	double random_exponential = -log(random);
+	return random_exponential;
 }
 
 /**
@@ -437,4 +482,62 @@ void freeMemory(void){
 	fftw_free(altruism_forward);
 	fftw_free(normal_forward_altruism_forward_product);
 	fftw_free(normal_altruism_convolution);
+}
+
+/**
+ * Prints predefined parameters to the input file.
+ */
+void printParametersToFile(FILE *filename){
+	time_t tm;
+	time(&tm);
+	fprintf(filename, "Simulation from %s performed at %s", __FILE__, ctime(&tm));
+	fprintf(filename, "Predefined parameters:\n");
+	fprintf(filename, "Tmax = %d\n", TMAX);
+	fprintf(filename, "DeltaTime = %f\n", DELTATIME);
+	fprintf(filename, "DeltaSpace = %f\n", DELTASPACE);
+	fprintf(filename, "Initial population size = %d\n", INITIALPOPULATIONSIZE);
+	fprintf(filename, "Number of positions = %d\n", NPOS);
+	fprintf(filename, "Initial altruism level = %f\n", INITIALALTRUISM);
+	fprintf(filename, "Death rate = %f\n", DEATHRATE);
+	fprintf(filename, "Birth rate = %f\n", BIRTHRATE);
+	fprintf(filename, "Mutation probability altruism = %f\n", MUTATIONPROBABILITY);
+	fprintf(filename, "Mean mutation size altruism = %f\n", MEANMUTSIZEALTRUISM);
+	fprintf(filename, "Scale of altruism = %d\n", ALTRUISMSCALE);
+	fprintf(filename, "Scale of competition = %d\n", COMPETITIONSCALE);
+	fprintf(filename, "Scale of movement = %d\n", MOVEMENTSCALE);
+	fprintf(filename, "B0 = %f\n", B0);
+	fprintf(filename, "BMAX = %f\n", BMAX);
+	fprintf(filename, "K = %d\n", K);
+	fprintf(filename, "Number of fields (kernel) = %d\n", FIELDS);
+}
+
+/**
+ * Calculates the mean level of altruism in the population and prints this to an outputfile.
+ * Calls the printParametersToFile() function.
+ */
+void printMeanAltruismToFile(FILE *filename, int timestep){
+	if(timestep == 0){
+		printParametersToFile(filename);
+		fprintf(filename, "Time Mean_altruism_level\n");
+	}
+	double cumulative_altruism;
+	for(int i = 0; i < population_size_old; i++){
+		cumulative_altruism += individuals_old[i].altruism;
+	}
+	double mean_altruism = cumulative_altruism/population_size_old;
+	fprintf(filename, "%d %f\n", timestep, mean_altruism);
+}
+
+/**
+ * Calculates the sum of the real parts of the elements of an FFTW complex object with NPOS elements. Useful to sum altruism or density matrix.
+ */
+double sumMatrix(fftw_complex* matrix){
+	double sum = 0.0;
+	for(int index = 0; index < NPOS; index++){
+		if(cimag(matrix[index]) != 0){
+			printf("Warning: sumMatrix() is used to sum real parts of fftw_complex object, but not all imaginary parts are 0.");
+		}
+		sum += creal(matrix[index]);
+	}
+	return sum;
 }
