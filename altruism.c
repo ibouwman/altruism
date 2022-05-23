@@ -38,6 +38,8 @@ void freeMemory(void);
 //Functions used to create output files:
 void printParametersToFile(FILE*);
 void printMeanAltruismToFile(FILE*, int);
+void printPopulationSizeToFile(FILE*, int);
+void printSummedMatrixToFile(FILE*, int);
 double sumMatrix(fftw_complex*);
 
 //Define parameters TODO: Put in order of usage
@@ -51,7 +53,7 @@ double sumMatrix(fftw_complex*);
 #define XMAX 5
 #define YMAX 5
 #define NPOS XMAX * YMAX
-#define INITIALALTRUISM 0.0 //Once evolution (mutation) is implemented, this should probably be 0.
+#define INITIALALTRUISM 0.5
 #define INITIALP 1 //Set to 1 for only A offspring or 0 for only B offspring
 #define MAXSIZE 1000 //Maximum number of individuals in the population. Note that MAXSIZE can be larger than XMAX*YMAX because multiple individuals are allowed at the same position.
 #define DEATHRATE 1.0
@@ -127,10 +129,12 @@ int main() {
 	//outputfile = fopen("filename.txt", "w+");
     for (int t = 0; t < TMAX; t++) {
     	//printMeanAltruismToFile(outputfile, t);
+    	//printPopulationSizeToFile(outputfile, t);
     	newborns = 0;
 		deaths = 0;
     	createLocalDensityMatrix();
     	createExperiencedAltruismMatrix();
+    	//printSummedMatrixToFile(outputfile, t);
 		for (int i = 0; i < population_size_old; i++){
 			i_new = i + newborns - deaths; //The index of i in the new timestep, taking into account births and deaths the current timestep
 			double probabilityOfEvent = genrand64_real2();
@@ -518,14 +522,37 @@ void printParametersToFile(FILE *filename){
 void printMeanAltruismToFile(FILE *filename, int timestep){
 	if(timestep == 0){
 		printParametersToFile(filename);
-		fprintf(filename, "Time Mean_altruism_level\n");
+		fprintf(filename, "Timestep Time Mean_altruism_level\n");
 	}
 	double cumulative_altruism;
 	for(int i = 0; i < population_size_old; i++){
 		cumulative_altruism += individuals_old[i].altruism;
 	}
 	double mean_altruism = cumulative_altruism/population_size_old;
-	fprintf(filename, "%d %f\n", timestep, mean_altruism);
+	fprintf(filename, "%d %f %f\n", timestep, timestep*DELTATIME, mean_altruism);
+}
+
+/**
+ * Prints the population size to an outputfile.
+ * Calls the printParametersToFile() function.
+ */
+void printPopulationSizeToFile(FILE *filename, int timestep){
+	if(timestep == 0){
+		printParametersToFile(filename);
+		fprintf(filename, "Timestep Time Population_size\n");
+	}
+	fprintf(filename, "%d %f %d\n", timestep, timestep*DELTATIME, population_size_old);
+}
+
+/**
+ * Print the sum of the matrix before and after convolution with the normal kernel.
+ */
+void printSummedMatrixToFile(FILE *filename, int timestep){
+	if(timestep == 0){
+		printParametersToFile(filename);
+		fprintf(filename, "Timestep Time sum_density sum_convolution_density sum_altruism sum_convolution_altruism\n");
+	}
+	fprintf(filename, "%d %f %f %f %f %f\n", timestep, timestep*DELTATIME, sumMatrix(density), sumMatrix(normal_density_convolution), sumMatrix(altruism), sumMatrix(normal_altruism_convolution));
 }
 
 /**
