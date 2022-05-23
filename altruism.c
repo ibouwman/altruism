@@ -54,6 +54,7 @@ double sumMatrix(fftw_complex*);
 #define YMAX 5
 #define NPOS XMAX * YMAX
 #define INITIALALTRUISM 0.5
+
 #define INITIALP 1 //Set to 1 for only A offspring or 0 for only B offspring
 #define MAXSIZE 1000 //Maximum number of individuals in the population. Note that MAXSIZE can be larger than XMAX*YMAX because multiple individuals are allowed at the same position.
 #define DEATHRATE 1.0
@@ -136,6 +137,7 @@ int main() {
     	createExperiencedAltruismMatrix();
     	//printSummedMatrixToFile(outputfile, t);
 		for (int i = 0; i < population_size_old; i++){
+
 			i_new = i + newborns - deaths; //The index of i in the new timestep, taking into account births and deaths the current timestep
 			double probabilityOfEvent = genrand64_real2();
 			if (probabilityOfEvent < DEATHRATE*DELTATIME){ //If individual dies...
