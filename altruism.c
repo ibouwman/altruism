@@ -123,10 +123,10 @@ int main() {
 	makeIndividuals();
 	population_size_old = INITIALPOPULATIONSIZE;
 	population_size_new = 0;
-	//FILE *outputfile;
-	//outputfile = fopen("filename.txt", "w+");
+	FILE *outputfile;
+	outputfile = fopen("filename.txt", "w+");
     for (int t = 0; t < TMAX; t++) {
-    	//printMeanAltruismToFile(outputfile, t);
+    	printMeanAltruismToFile(outputfile, t);
     	newborns = 0;
 		deaths = 0;
     	createLocalDensityMatrix();
