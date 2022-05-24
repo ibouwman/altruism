@@ -62,10 +62,12 @@ double sumMatrix(fftw_complex*);
 #define COMPETITIONSCALE 4
 #define MUTATIONPROBABILITY 0.001
 #define MEANMUTSIZEALTRUISM 0.005
+#define MEANMUTSIZEP 0.005
 #define MOVEMENTSCALE 1
 #define MOVE 0 //Probability to move in x direction = probability to move in y direction
 #define B0 1.0 //Basal benefit of altruism
 #define BMAX 5.0 //Maximum benefit of altruism
+#define CMAX 4.0
 #define K 40 //Carrying capacity
 #define THRESHOLD 0.0000000001 //Numbers lower than this are set to 0
 #define FIELDS 7 //Number of fields to take into account (in each direction) when creating the normal kernel
@@ -77,7 +79,7 @@ struct Individual {
 	int ypos;
 	double altruism;
 	double p;
-	int phenotype; //0 is A, 1 is B
+	int phenotype; //altruism expressed (1) or not expressed (0)
 };
 
 //Declare global variables
@@ -119,6 +121,7 @@ int main() {
 	init_genrand64(time(0));
 	allocateMemory();
 	createFFTWplans();
+	printf("Running %s phenotypic-differentiation branch\n", __FILE__);
 	printf("Creating kernels...\n");
 	createNormalKernel(COMPETITIONSCALE, normal_for_density); //Create and execute only once, same for each timestep
 	createNormalKernel(ALTRUISMSCALE, normal_for_altruism);
@@ -253,10 +256,10 @@ void makeIndividuals(){
 		individuals_old[i].p = INITIALP;
 	}
 	for (int i = 0; i < INITIALA; i++){
-		individuals_old[i].phenotype = 0;
+		individuals_old[i].phenotype = 1;
 	}
 	for (int i = INITIALA; i < INITIALPOPULATIONSIZE; i++){ //Put Bs after As so nothing is overwritten (Bs = Population size - As)
-		individuals_old[i].phenotype = 1;
+		individuals_old[i].phenotype = 0;
 	}
 }
 
@@ -318,7 +321,7 @@ void createExperiencedAltruismMatrix(){
 }
 
 /**
- * Creates a matrix with for each position in the field the cumulative level of altruism of the individuals at that position.
+ * Creates a matrix with for each position in the field the cumulative level of EXPRESSED altruism of the individuals at that position.
  * Similar to the creation of the density matrix.
  */
 void fillAltruismMatrix(){
@@ -327,11 +330,11 @@ void fillAltruismMatrix(){
 		for (int y = 1; y < YMAX+1; y++){
 			double cumulative_altruism = 0.0;
 			for (int index = 0; index < population_size_old; index++){
-				if (individuals_old[index].xpos == x & individuals_old[index].ypos == y){
+				if (individuals_old[index].phenotype == 1 & individuals_old[index].xpos == x & individuals_old[index].ypos == y){ //Only the altruism that is expressed counts (phenotype 1)
 					cumulative_altruism += individuals_old[index].altruism;
 				}
 			}
-			altruism[position] = creal(cumulative_altruism);
+			altruism[position] = creal(cumulative_altruism); //Note that altruism only includes the expresssed altruism (i.e. the altruism levels of individuals with phenotype 1)
 			position += 1;
 		}
 	}
@@ -378,7 +381,7 @@ double calculateBirthRate(int i){
 	double local_density = normal_density_convolution[position];
 	double experienced_altruism = normal_altruism_convolution[position];
 	double benefit = (BMAX * experienced_altruism)/((BMAX/B0) + experienced_altruism);
-	double cost = (1.0 - individuals_old[i].phenotype) * individuals_old[i].altruism; //Only individuals with phenotype 0 (A) pay altruism cost
+	double cost = individuals_old[i].phenotype * (CMAX * individuals_old[i].altruism)/(CMAX + individuals_old[i].altruism); //Only individuals that express altruism (1) pay a cost
 	double birth_rate = BIRTHRATE * (1.0 - cost + benefit) * (1.0 - (local_density/K));
 	if (birth_rate < 0){
 		birth_rate = 0; //Negative birth rates are set to 0
@@ -393,7 +396,7 @@ double calculateBirthRate(int i){
 void reproduceIndividual(int i){
 	individuals_new[i_new+1] = individuals_old[i]; //Initially child = parent BUT consider mutation below
 	double random_altruism = genrand64_real2();
-	if(random_altruism < MUTATIONPROBABILITY){ //If mutation occurs...
+	if(random_altruism < MUTATIONPROBABILITY){ //If mutation occurs... TODO: Write mutation function
 		double delta_altruism;
 		double random_direction = genrand64_real2(); //...Randomly decide direction of mutation
 		if(random_direction < 0.5){
@@ -407,12 +410,27 @@ void reproduceIndividual(int i){
 			individuals_new[i_new+1].altruism = 0.0;
 		}
 	}
-	double random_phenotype = genrand64_real2();
-	if (random_phenotype < individuals_old[i].p){ //p is probability that child has phenotype A (0)
-		individuals_new[i_new+1].phenotype = 0;
+	double random_p = genrand64_real2();
+	if(random_p < MUTATIONPROBABILITY){ //If mutation occurs...
+		double delta_p;
+		double random_direction = genrand64_real2(); //...Randomly decide direction of mutation
+		if(random_direction < 0.5){
+			delta_p = -MEANMUTSIZEP * randomExponential(); //...Calculate change in altruism level due to mutation
+		}
+		else{
+			delta_p = MEANMUTSIZEP * randomExponential();
+		}
+		individuals_new[i_new+1].p = individuals_old[i].p + delta_p; //...Calculate altruism level of child
+		if(individuals_new[i_new+1].p < 0){
+			individuals_new[i_new+1].p = 0.0;
+		}
+	}
+	double random_phenotype = genrand64_real2(); //Is altruism expressed or not? Depends on p
+	if (random_phenotype < individuals_new[i_new+1].p){ //p is the probability to express altruism
+		individuals_new[i_new+1].phenotype = 1;
 	}
 	else{
-		individuals_new[i_new+1].phenotype = 1;
+		individuals_new[i_new+1].phenotype = 0;
 	}
 }
 
