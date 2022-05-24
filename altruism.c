@@ -47,14 +47,14 @@ double sumMatrix(fftw_complex*);
 #define TMAX 200
 #define DELTATIME 0.1 //Multiply rate by DELTATIME to get probability per timestep
 #define DELTASPACE 1.0 //Size of a position. This equals 1/resolution in the Fortran code.
-//#define INITIALA 100
-//#define INITIALB 0
+#define INITIALA 100
+#define INITIALB 0
 #define INITIALPOPULATIONSIZE 100 //INITIALA + INITIALB
 #define XMAX 5
 #define YMAX 5
 #define NPOS XMAX * YMAX
 #define INITIALALTRUISM 0.5
-//#define INITIALP 1 //Set to 1 for only A offspring or 0 for only B offspring
+#define INITIALP 1 //Set to 1 for only A offspring or 0 for only B offspring
 #define MAXSIZE 1000 //Maximum number of individuals in the population. Note that MAXSIZE can be larger than XMAX*YMAX because multiple individuals are allowed at the same position.
 #define DEATHRATE 1.0
 #define BIRTHRATE 1.0 //Baseline max birth rate, birth rate for non-altruist
@@ -77,7 +77,7 @@ struct Individual {
 	int ypos;
 	double altruism;
 	double p;
-	//int phenotype; //0 is A, 1 is B
+	int phenotype; //0 is A, 1 is B
 };
 
 //Declare global variables
@@ -250,14 +250,14 @@ void makeIndividuals(){
 		individuals_old[i].xpos = rand() % XMAX+1;;
 		individuals_old[i].ypos = rand() % YMAX+1;
 		individuals_old[i].altruism = INITIALALTRUISM;
-		//individuals_old[i].p = INITIALP;
+		individuals_old[i].p = INITIALP;
 	}
-	/*for (int i = 0; i < INITIALA; i++){
+	for (int i = 0; i < INITIALA; i++){
 		individuals_old[i].phenotype = 0;
 	}
 	for (int i = INITIALA; i < INITIALPOPULATIONSIZE; i++){ //Put Bs after As so nothing is overwritten (Bs = Population size - As)
 		individuals_old[i].phenotype = 1;
-	}*/
+	}
 }
 
 /**
@@ -378,8 +378,8 @@ double calculateBirthRate(int i){
 	double local_density = normal_density_convolution[position];
 	double experienced_altruism = normal_altruism_convolution[position];
 	double benefit = (BMAX * experienced_altruism)/((BMAX/B0) + experienced_altruism);
-	//double cost = (1.0 - individuals_old[i].phenotype) * individuals_old[i].altruism; //Only individuals with phenotype 0 (A) pay altruism cost
-	double birth_rate = BIRTHRATE * (1.0 - individuals_old[i].altruism + benefit) * (1.0 - (local_density/K));
+	double cost = (1.0 - individuals_old[i].phenotype) * individuals_old[i].altruism; //Only individuals with phenotype 0 (A) pay altruism cost
+	double birth_rate = BIRTHRATE * (1.0 - cost + benefit) * (1.0 - (local_density/K));
 	if (birth_rate < 0){
 		birth_rate = 0; //Negative birth rates are set to 0
 	}
@@ -407,13 +407,13 @@ void reproduceIndividual(int i){
 			individuals_new[i_new+1].altruism = 0.0;
 		}
 	}
-	/*double random_phenotype = genrand64_real2();
+	double random_phenotype = genrand64_real2();
 	if (random_phenotype < individuals_old[i].p){ //p is probability that child has phenotype A (0)
 		individuals_new[i_new+1].phenotype = 0;
 	}
 	else{
 		individuals_new[i_new+1].phenotype = 1;
-	}*/
+	}
 }
 
 /**
