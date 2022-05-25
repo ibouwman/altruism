@@ -28,6 +28,7 @@ void fillDensityMatrix(void);
 void createExperiencedAltruismMatrix(void);
 void fillAltruismMatrix(void);
 void moveIndividual(int);
+double randomNormal(void);
 double calculateBirthRate(int);
 void reproduceIndividual(int);
 double randomExponential(void);
@@ -329,32 +330,26 @@ void fillAltruismMatrix(){
  * i: The individual to move.
  */
 void moveIndividual(int i){ //TODO: Try using modulo here
-	double move_x = genrand64_real2();
-	double move_y = genrand64_real2();
-	if (move_x < MOVE){
-		double random = genrand64_real2();
-		if (random < 0.5){
-			if (individuals_old[i].xpos+MOVEMENTSCALE*(1/DELTASPACE) <= XMAX){
-				individuals_new[i].xpos = individuals_old[i].xpos+MOVEMENTSCALE*(1/DELTASPACE);
-			}
-		}
-		else if (individuals_old[i].xpos-MOVEMENTSCALE*(1/DELTASPACE) > 0){
-			individuals_new[i].xpos = individuals_old[i].xpos-MOVEMENTSCALE*(1/DELTASPACE);
-		}
-	}
-	if (move_y < MOVE){
-		double random = genrand64_real2();
-		if (random < 0.5){
-			if (individuals_old[i].ypos+MOVEMENTSCALE*(1/DELTASPACE) <= YMAX){
-				individuals_new[i].ypos = individuals_old[i].ypos+MOVEMENTSCALE*(1/DELTASPACE);
-			}
-		}
-		else if (individuals_old[i].ypos-MOVEMENTSCALE*(1/DELTASPACE) > 0){
-			individuals_new[i].ypos = individuals_old[i].ypos-MOVEMENTSCALE*(1/DELTASPACE);
-		}
-	}
+	int move_x = round(randomNormal()*MOVEMENTSCALE*(1/DELTASPACE));
+	int move_y = round(randomNormal()*MOVEMENTSCALE*(1/DELTASPACE));
+	individuals_new[i].xpos = (individuals_old[i].xpos + move_x ) % XMAX;
+	individuals_new[i].ypos = (individuals_old[i].ypos + move_y) % YMAX;
 }
-
+/**
+ * Creates two independent random standard normal variables
+ */
+double randomNormal(void){
+	double uni1 = 1-2*genrand64_real2();
+	double uni2 = 1-2*genrand64_real2();
+	double s = uni1*uni1 + uni2*uni2;
+	while (s >= 1){
+		double uni1 = 1-2*genrand64_real2();
+		double uni2 = 1-2*genrand64_real2();
+	}
+	double random_normal = uni1*sqrt(-2*log(s)/s);
+	//double random_normal2 = x2*sqrt(-2*log(s)/s); //This outputs a second independent random normal, would be better to use this each time
+	return random_normal; //
+}
 /**
  * Calculates the birth rate of the input individual.
  * i: The individual whose birth rate is calculated.

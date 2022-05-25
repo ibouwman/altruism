@@ -17,3 +17,11 @@ Setup.odt
 #ziggurat test
 zigtest.c
 ziggurat.o
+
+#polar test
+polar
+polar.c
+
+#movement test
+movtest
+movtest.c
