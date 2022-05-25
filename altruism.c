@@ -332,8 +332,18 @@ void fillAltruismMatrix(){
 void moveIndividual(int i){ //TODO: Try using modulo here
 	int move_x = round(randomNormal()*MOVEMENTSCALE*(1/DELTASPACE));
 	int move_y = round(randomNormal()*MOVEMENTSCALE*(1/DELTASPACE));
-	individuals_new[i].xpos = (individuals_old[i].xpos + move_x ) % XMAX;
-	individuals_new[i].ypos = (individuals_old[i].ypos + move_y) % YMAX;
+	if(individuals_old[i].xpos + move_x > XMAX){
+		individuals_new[i].xpos = (individuals_old[i].xpos + move_x ) % XMAX;
+	}
+	else{
+		individuals_new[i].xpos = individuals_old[i].xpos + move_x;
+	}
+	if(individuals_old[i].ypos + move_y > YMAX){
+		individuals_new[i].ypos = (individuals_old[i].ypos + move_y) % YMAX;
+	}
+	else{
+		individuals_new[i].ypos = individuals_old[i].ypos + move_y;
+	}
 }
 /**
  * Creates two independent random standard normal variables
