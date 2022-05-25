@@ -30,6 +30,7 @@ void fillAltruismMatrix(void);
 void moveIndividual(int);
 double calculateBirthRate(int);
 void reproduceIndividual(int);
+double considerMutation(double, double);
 double randomExponential(void);
 void checkPopulationSize(int);
 void updateStates(void);
@@ -49,11 +50,11 @@ double sumMatrix(fftw_complex*);
 #define DELTASPACE 1.0 //Size of a position. This equals 1/resolution in the Fortran code.
 #define INITIALA 100
 #define INITIALB 0
-#define INITIALPOPULATIONSIZE 100 //INITIALA + INITIALB
+#define INITIALPOPULATIONSIZE INITIALA + INITIALB
 #define XMAX 5
 #define YMAX 5
 #define NPOS XMAX * YMAX
-#define INITIALALTRUISM 0.5
+#define INITIALALTRUISM 0.0
 #define INITIALP 1 //Set to 1 for only A offspring or 0 for only B offspring
 #define MAXSIZE 1000 //Maximum number of individuals in the population. Note that MAXSIZE can be larger than XMAX*YMAX because multiple individuals are allowed at the same position.
 #define DEATHRATE 1.0
@@ -395,36 +396,8 @@ double calculateBirthRate(int i){
  */
 void reproduceIndividual(int i){
 	individuals_new[i_new+1] = individuals_old[i]; //Initially child = parent BUT consider mutation below
-	double random_altruism = genrand64_real2();
-	if(random_altruism < MUTATIONPROBABILITY){ //If mutation occurs... TODO: Write mutation function
-		double delta_altruism;
-		double random_direction = genrand64_real2(); //...Randomly decide direction of mutation
-		if(random_direction < 0.5){
-			delta_altruism = -MEANMUTSIZEALTRUISM * randomExponential(); //...Calculate change in altruism level due to mutation
-		}
-		else{
-			delta_altruism = MEANMUTSIZEALTRUISM * randomExponential();
-		}
-		individuals_new[i_new+1].altruism = individuals_old[i].altruism + delta_altruism; //...Calculate altruism level of child
-		if(individuals_new[i_new+1].altruism < 0){
-			individuals_new[i_new+1].altruism = 0.0;
-		}
-	}
-	double random_p = genrand64_real2();
-	if(random_p < MUTATIONPROBABILITY){ //If mutation occurs...
-		double delta_p;
-		double random_direction = genrand64_real2(); //...Randomly decide direction of mutation
-		if(random_direction < 0.5){
-			delta_p = -MEANMUTSIZEP * randomExponential(); //...Calculate change in altruism level due to mutation
-		}
-		else{
-			delta_p = MEANMUTSIZEP * randomExponential();
-		}
-		individuals_new[i_new+1].p = individuals_old[i].p + delta_p; //...Calculate altruism level of child
-		if(individuals_new[i_new+1].p < 0){
-			individuals_new[i_new+1].p = 0.0;
-		}
-	}
+	individuals_new[i_new+1].altruism = considerMutation(individuals_new[i_new+1].altruism, MEANMUTSIZEALTRUISM);
+	individuals_new[i_new+1].p = considerMutation(individuals_new[i_new+1].p, MEANMUTSIZEP);
 	double random_phenotype = genrand64_real2(); //Is altruism expressed or not? Depends on p
 	if (random_phenotype < individuals_new[i_new+1].p){ //p is the probability to express altruism
 		individuals_new[i_new+1].phenotype = 1;
@@ -432,6 +405,31 @@ void reproduceIndividual(int i){
 	else{
 		individuals_new[i_new+1].phenotype = 0;
 	}
+}
+
+/**
+ * Considers whether mutation occurs. If so, the trait value of is changed.
+ * trait: The trait under consideration.
+ * mean_mutation_size: The mean size of a mutation in the trait.
+ * return: The value of the trait after considering mutation.
+ */
+double considerMutation(double trait, double mean_mutation_size){
+	double random_number = genrand64_real2();
+	if(random_number < MUTATIONPROBABILITY){
+		double delta_trait;
+		double random_direction = genrand64_real2(); //...Randomly decide direction of mutation
+		if(random_direction < 0.5){
+			delta_trait = -mean_mutation_size * randomExponential(); //...Calculate change in trait value due to mutation
+		}
+		else{
+			delta_trait = mean_mutation_size * randomExponential(); //...Calculate new trait value (trait value of child initially equals trait value of parent)
+		}
+		trait = trait + delta_trait;
+		if(trait < 0){
+			trait = 0;
+		}
+	}
+	return trait;
 }
 
 /**
