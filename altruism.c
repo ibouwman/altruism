@@ -110,6 +110,9 @@ int i_new;
 
 //Main
 int main() {
+	time_t tm;
+	time(&tm);
+	printf("Simulation started at %s\n", ctime(&tm));
 	srand(time(0));
 	init_genrand64(time(0));
 	allocateMemory();
