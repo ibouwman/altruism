@@ -408,7 +408,7 @@ void reproduceIndividual(int i){
 }
 
 /**
- * Considers whether mutation occurs. If so, the trait value of is changed.
+ * Considers whether mutation occurs. If so, the trait value is changed.
  * trait: The trait under consideration.
  * mean_mutation_size: The mean size of a mutation in the trait.
  * return: The value of the trait after considering mutation.
