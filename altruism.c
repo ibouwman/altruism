@@ -248,7 +248,7 @@ void createNormalKernel(int scale, fftw_complex* normal_kernel2D){
  * Creates the initial individuals. Called once at the beginning of the code.
  */
 void makeIndividuals(){
-	for (int i = 0; i < INITIALPOPULATIONSIZE; i++){ //First fill in all initial parameters that are the same for As and Bs
+	for (int i = 0; i < INITIALPOPULATIONSIZE; i++){
 		individuals_old[i].xpos = rand() % XMAX+1;;
 		individuals_old[i].ypos = rand() % YMAX+1;
 		individuals_old[i].altruism = INITIALALTRUISM;
