@@ -120,11 +120,13 @@ int i_new;
 
 //Main
 int main() {
+	time_t tm;
+	time(&tm);
+	printf("Running %s phenotypic-differentiation branch. Started at %s\n", __FILE__, ctime(&tm));
 	srand(time(0));
 	init_genrand64(time(0));
 	allocateMemory();
 	createFFTWplans();
-	printf("Running %s phenotypic-differentiation branch\n", __FILE__);
 	printf("Creating kernels...\n");
 	createNormalKernel(COMPETITIONSCALE, normal_for_density); //Create and execute only once, same for each timestep
 	createNormalKernel(ALTRUISMSCALE, normal_for_altruism);
