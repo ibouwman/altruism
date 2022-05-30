@@ -25,3 +25,6 @@ polar.c
 #movement test
 movtest
 movtest.c
+
+#initial output
+filename.txt
