@@ -66,7 +66,7 @@ double sumMatrix(fftw_complex*);
 #define K 40 //Carrying capacity
 #define THRESHOLD 0.0000000001 //Numbers lower than this are set to 0
 #define FIELDS 7 //Number of fields to take into account (in each direction) when creating the normal kernel
-#define OUTPUTUNIT 5 //Number of timesteps between each output print
+#define OUTPUTUNIT 10 //Number of timesteps between each output print
 
 //Declare structures
 struct Individual {
@@ -112,7 +112,7 @@ int i_new;
 int main() {
 	time_t tm;
 	time(&tm);
-	printf("Simulation started at %s\n", ctime(&tm));
+	printf("Running %s main branch. Started at %s\n", __FILE__, ctime(&tm));
 	srand(time(0));
 	init_genrand64(time(0));
 	allocateMemory();
@@ -130,7 +130,11 @@ int main() {
 	//outputfile = fopen("filename.txt", "w+");
     for (int t = 0; t < TMAX; t++) {
     	if(t == 0){
-    		printf("Simulation has started!\n");
+    		printf("Simulation has started!\nProgress (printed every %d timesteps):\n", OUTPUTUNIT);
+    	}
+    	//printf("\rProgress: %d out of %d timesteps.", t, TMAX);
+    	if(t % OUTPUTUNIT == 0){
+    		printf("%d out of %d timesteps.\n", t, TMAX);
     	}
     	//printMeanAltruismToFile(outputfile, t);
     	//printPopulationSizeToFile(outputfile, t);
@@ -146,14 +150,14 @@ int main() {
 				deaths += 1;
 			}
 			else{ //If individual doesn't die...
-				moveIndividual(i); //...Move it
+				//moveIndividual(i); //...Move it
 				individuals_new[i_new] = individuals_old[i];
 				population_size_new += 1; //...And add it to the population size of the new state.
 				double birth_rate = calculateBirthRate(i);
 				if (probabilityOfEvent < DEATHRATE*DELTATIME + birth_rate*DELTATIME){ //If the individual reproduces...
 					reproduceIndividual(i); //...Create the child
 					population_size_new += 1; //...And add it to the population size of the next timestep
-					moveIndividual(i_new + 1); //Move the child: Index of child = index of parent in the new state + 1
+					//moveIndividual(i_new + 1); //Move the child: Index of child = index of parent in the new state + 1
 					newborns += 1;
 				}
 			}
@@ -163,7 +167,7 @@ int main() {
    }
    destroyFFTWplans();
    freeMemory();
-   printf("Done.\n");
+   printf("\nDone.\n");
    return 0;
 }
 
