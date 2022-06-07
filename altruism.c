@@ -44,7 +44,7 @@ void printSummedMatrixToFile(FILE*, int);
 double sumMatrix(fftw_complex*);
 
 //Define parameters TODO: Put in order of usage
-#define TMAX 10
+#define TMAX 5
 #define DELTATIME 0.1 //Multiply rate by DELTATIME to get probability per timestep
 #define DELTASPACE 1.0 //Size of a position. This equals 1/resolution in the Fortran code.
 #define INITIALPOPULATIONSIZE 100
@@ -332,8 +332,8 @@ void fillAltruismMatrix(){
 void moveIndividual(int i){ //TODO: Try using modulo here
 	int move_x = round(randomNormal()*MOVEMENTSCALE*(1/DELTASPACE));
 	int move_y = round(randomNormal()*MOVEMENTSCALE*(1/DELTASPACE));
-	individuals_new[i].xpos = ((individuals_old[i].xpos + move_x -1) % XMAX)+1;
-	individuals_new[i].ypos = ((individuals_old[i].ypos + move_y-1) % YMAX)+1;
+	individuals_new[i].xpos = ((individuals_old[i].xpos + move_x + XMAX -1) % XMAX)+1;
+	individuals_new[i].ypos = ((individuals_old[i].ypos + move_y + YMAX -1) % YMAX)+1;
 }
 /**
  * Creates two independent random standard normal variables
