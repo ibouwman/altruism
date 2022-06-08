@@ -32,6 +32,7 @@ double calculateBirthRate(int);
 void reproduceIndividual(int);
 double considerMutation(double, double);
 double randomExponential(void);
+void countPhenotypes(void);
 void checkPopulationSize(int);
 void updateStates(void);
 void destroyFFTWplans(void);
@@ -40,6 +41,7 @@ void freeMemory(void);
 void printParametersToFile(FILE*);
 void printMeanAltruismToFile(FILE*, int);
 void printPopulationSizeToFile(FILE*, int);
+void printPhenotypesToFile(FILE*, int);
 void printSummedMatrixToFile(FILE*, int);
 double sumMatrix(fftw_complex*);
 
@@ -48,29 +50,29 @@ double sumMatrix(fftw_complex*);
 #define TMAX 200
 #define DELTATIME 0.1 //Multiply rate by DELTATIME to get probability per timestep
 #define DELTASPACE 1.0 //Size of a position. This equals 1/resolution in the Fortran code.
-#define INITIALA 100
-#define INITIALB 0
+#define INITIALA 20
+#define INITIALB 20
 #define INITIALPOPULATIONSIZE INITIALA + INITIALB
-#define XMAX 5
-#define YMAX 5
+#define XMAX 10
+#define YMAX 10
 #define NPOS XMAX * YMAX
 #define INITIALALTRUISM 0.0
-#define INITIALP 1 //Set to 1 for only A offspring or 0 for only B offspring
-#define MAXSIZE 1000 //Maximum number of individuals in the population. Note that MAXSIZE can be larger than XMAX*YMAX because multiple individuals are allowed at the same position.
+#define INITIALP 0.5 //Set to 1 for only A offspring or 0 for only B offspring
+#define MAXSIZE 5000 //Maximum number of individuals in the population. Note that MAXSIZE can be larger than XMAX*YMAX because multiple individuals are allowed at the same position.
 #define DEATHRATE 1.0
 #define BIRTHRATE 1.0 //Baseline max birth rate, birth rate for non-altruist
 #define ALTRUISMSCALE 1 //Consider (2*SCALE + 1)^2 fields
 #define COMPETITIONSCALE 4
-#define MUTATIONPROBABILITY 0.001
+#define MUTATIONPROBABILITY 0.0 //0.001
 #define MEANMUTSIZEALTRUISM 0.005
 #define MEANMUTSIZEP 0.005
 #define MOVEMENTSCALE 1
 #define MOVE 0 //Probability to move in x direction = probability to move in y direction
 #define B0 1.0 //Basal benefit of altruism
 #define BMAX 5.0 //Maximum benefit of altruism
-#define ALPHA 0.5
-#define BETA 4.0
-#define KAPPA 2.0
+#define ALPHA 0.25
+#define BETA 0.75
+#define KAPPA 1.0
 #define K 40 //Carrying capacity
 #define THRESHOLD 0.0000000001 //Numbers lower than this are set to 0
 #define FIELDS 7 //Number of fields to take into account (in each direction) when creating the normal kernel
@@ -117,6 +119,8 @@ struct Individual** individuals_new_ptr;
 int newborns;
 int deaths;
 int i_new;
+int A_counter;
+int B_counter;
 
 //Main
 int main() {
@@ -136,13 +140,19 @@ int main() {
 	makeIndividuals();
 	population_size_old = INITIALPOPULATIONSIZE;
 	population_size_new = 0;
-	//FILE *outputfile;
-	//outputfile = fopen("filename.txt", "w+");
+	FILE *outputfile;
+	outputfile = fopen("filename.txt", "w+");
     for (int t = 0; t < TMAX; t++) {
     	if(t == 0){
     		printf("Simulation has started!\n");
     	}
-    	//printMeanAltruismToFile(outputfile, t);
+    	countPhenotypes();
+    	if((A_counter + B_counter) != population_size_old){
+    		printf("ERROR: The summed number of individuals per phenotype (A: %d, B: %d) doesn't equal the population size (%d)!\n", A_counter, B_counter, population_size_old);
+    		exit(1);
+    	}
+    	//printPhenotypesToFile(outputfile, t);
+    	printMeanAltruismToFile(outputfile, t);
     	//printPopulationSizeToFile(outputfile, t);
     	newborns = 0;
 		deaths = 0;
@@ -257,7 +267,7 @@ void makeIndividuals(){
 	for (int i = 0; i < INITIALPOPULATIONSIZE; i++){ //First fill in all initial parameters that are the same for As and Bs
 		individuals_old[i].xpos = rand() % XMAX+1;;
 		individuals_old[i].ypos = rand() % YMAX+1;
-		individuals_old[i].altruism = INITIALALTRUISM;
+		individuals_old[i].altruism = genrand64_real2(); //INITIALALTRUISM;
 		individuals_old[i].p = INITIALP;
 	}
 	for (int i = 0; i < INITIALA; i++){
@@ -387,7 +397,8 @@ double calculateBirthRate(int i){
 	double experienced_altruism = normal_altruism_convolution[position];
 	double benefit = (BMAX * experienced_altruism)/((BMAX/B0) + experienced_altruism);
 	double cost =  ALPHA*individuals_old[i].altruism + (BETA*individuals_old[i].altruism)/(KAPPA + individuals_old[i].altruism);
-	double birth_rate = BIRTHRATE * (1.0 - individuals_old[i].phenotype * cost + benefit) * (1.0 - (local_density/K)); //Only individuals that express altruism (phenotype = 1) pay a cost
+	double effectiveCost = individuals_old[i].phenotype * cost; //Only individuals that express altruism (phenotype = 1) pay a cost
+	double birth_rate = BIRTHRATE * (1.0 - effectiveCost + benefit) * (1.0 - (local_density/K));
 	if (birth_rate < 0){
 		birth_rate = 0; //Negative birth rates are set to 0
 	}
@@ -446,6 +457,23 @@ double randomExponential(void){
 	double random = genrand64_real2();
 	double random_exponential = -log(random);
 	return random_exponential;
+}
+
+/**
+ * Counts the number of individuals per phenotype. Should be called at the beginning of a timestep.
+ * NOTE that A_counter and B_counter are only accurate if this function has been called recently!
+ */
+void countPhenotypes(void){
+	A_counter = 0;
+	B_counter = 0;
+	for(int i = 0; i < population_size_old; i++){
+		if(individuals_old[i].phenotype == 1){
+			A_counter += 1;
+		}
+		else{
+			B_counter += 1;
+		}
+	}
 }
 
 /**
@@ -529,9 +557,12 @@ void printParametersToFile(FILE *filename){
 	fprintf(filename, "Tmax = %d\n", TMAX);
 	fprintf(filename, "DeltaTime = %f\n", DELTATIME);
 	fprintf(filename, "DeltaSpace = %f\n", DELTASPACE);
+	fprintf(filename, "Initial As = %d\n", INITIALA);
+	fprintf(filename, "Initial Bs = %d\n", INITIALB);
 	fprintf(filename, "Initial population size = %d\n", INITIALPOPULATIONSIZE);
 	fprintf(filename, "Number of positions = %d\n", NPOS);
 	fprintf(filename, "Initial altruism level = %f\n", INITIALALTRUISM);
+	fprintf(filename, "Initial p = %f\n", INITIALP);
 	fprintf(filename, "Death rate = %f\n", DEATHRATE);
 	fprintf(filename, "Birth rate = %f\n", BIRTHRATE);
 	fprintf(filename, "Mutation probability altruism = %f\n", MUTATIONPROBABILITY);
@@ -541,26 +572,59 @@ void printParametersToFile(FILE *filename){
 	fprintf(filename, "Scale of movement = %d\n", MOVEMENTSCALE);
 	fprintf(filename, "B0 = %f\n", B0);
 	fprintf(filename, "BMAX = %f\n", BMAX);
+	fprintf(filename, "ALPHA = %f\n", ALPHA);
+	fprintf(filename, "BETA = %f\n", BETA);
+	fprintf(filename, "KAPPA = %f\n", KAPPA);
 	fprintf(filename, "K = %d\n", K);
 	fprintf(filename, "Number of fields (kernel) = %d\n", FIELDS);
 }
 
 /**
- * Calculates the mean level of altruism in the population and prints this to an outputfile.
+ * Calculates the mean level of altruism in the population and prints this to an outputfile. Call countPhenotypes() first!
  * Calls the printParametersToFile() function.
  */
 void printMeanAltruismToFile(FILE *filename, int timestep){
 	if(timestep == 0){
 		printParametersToFile(filename);
-		fprintf(filename, "Timestep Time Mean_altruism_level\n");
+		fprintf(filename, "Timestep Time Population_size As Bs Mean_altruism_all Mean_altruism_A Mean_altruism_B Mean_cost_A Mean_effective_cost_A Mean_cost_B Mean_effective_cost_B\n");
 	}
 	if(timestep % OUTPUTUNIT == 0){
-		double cumulative_altruism;
+		double cumulative_altruism_all = 0.0;
+		double cumulative_altruism_A = 0.0;
+		double cumulative_altruism_B = 0.0;
+		double cumulative_cost_A = 0.0;
+		double cumulative_effective_cost_A = 0.0;
+		double cumulative_cost_B = 0.0;
+		double cumulative_effective_cost_B = 0.0;
 		for(int i = 0; i < population_size_old; i++){
-			cumulative_altruism += individuals_old[i].altruism;
+			cumulative_altruism_all += individuals_old[i].altruism;
+			double cost = ALPHA*individuals_old[i].altruism + (BETA*individuals_old[i].altruism)/(KAPPA + individuals_old[i].altruism);
+			double effective_cost = individuals_old[i].phenotype * cost;
+			if(individuals_old[i].phenotype == 1){
+				cumulative_altruism_A += individuals_old[i].altruism;
+				cumulative_cost_A += cost;
+				cumulative_effective_cost_A += effective_cost;
+			}
+			else{
+				cumulative_altruism_B += individuals_old[i].altruism;
+				cumulative_cost_B += cost;
+				cumulative_effective_cost_B += effective_cost;
+			}
 		}
-		double mean_altruism = cumulative_altruism/population_size_old;
-		fprintf(filename, "%d %f %f\n", timestep, timestep*DELTATIME, mean_altruism);
+		double mean_altruism_all = cumulative_altruism_all/population_size_old;
+		double mean_altruism_A; double mean_cost_A; double mean_effective_cost_A;
+		double mean_altruism_B; double mean_cost_B; double mean_effective_cost_B;
+		if(A_counter > 0){
+			mean_altruism_A = cumulative_altruism_A/A_counter;
+			mean_cost_A = cumulative_cost_A/A_counter;
+			mean_effective_cost_A = cumulative_effective_cost_A/A_counter;
+		}
+		if(B_counter > 0){
+			mean_altruism_B = cumulative_altruism_B/B_counter;
+			mean_cost_B = cumulative_cost_B/B_counter;
+			mean_effective_cost_B = cumulative_effective_cost_B/B_counter;
+		}
+		fprintf(filename, "%d %f %d %d %d %f %f %f %f %f %f %f\n", timestep, timestep*DELTATIME, population_size_old, A_counter, B_counter, mean_altruism_all, mean_altruism_A, mean_altruism_B, mean_cost_A, mean_effective_cost_A, mean_cost_B, mean_effective_cost_B);
 	}
 }
 
@@ -575,6 +639,20 @@ void printPopulationSizeToFile(FILE *filename, int timestep){
 	}
 	if(timestep % OUTPUTUNIT == 0){
 		fprintf(filename, "%d %f %d\n", timestep, timestep*DELTATIME, population_size_old);
+	}
+}
+
+/**
+ * Prints number of individuals per timestep with their phenotype.
+ * Calls the printParametersToFile() function.
+ */
+void printPhenotypesToFile(FILE *filename, int timestep){
+	if(timestep == 0){
+		printParametersToFile(filename);
+		fprintf(filename, "Timestep Time Population_size As Bs\n");
+	}
+	if(timestep % OUTPUTUNIT == 0){
+		fprintf(filename, "%d %f %d %d %d\n", timestep, timestep*DELTATIME, population_size_old, A_counter, B_counter);
 	}
 }
 
