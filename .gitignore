@@ -13,6 +13,7 @@ fftw-3.3.10/
 
 #Set up tips
 Setup.odt
+.~lock.Setup.odt#
 
 #ziggurat test
 zigtest.c
@@ -28,3 +29,4 @@ movtest.c
 
 #initial output
 filename.txt
+
