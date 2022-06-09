@@ -43,30 +43,31 @@ void printPopulationSizeToFile(FILE*, int);
 void printSummedMatrixToFile(FILE*, int);
 double sumMatrix(fftw_complex*);
 
-//Define parameters TODO: Put in order of usage
-#define TMAX 5
-#define DELTATIME 0.1 //Multiply rate by DELTATIME to get probability per timestep
+//Define parameters and settings, following 2D/parameters in the Fortran code (and Table 1 of the paper)
+//Settings
+#define TMAX 101
+#define OUTPUTINTERVAL 10 //50 //Number of timesteps between each output print
+#define FIELDS 7 //Number of fields to take into account (in each direction) when creating the normal kernel
+#define DELTATIME 0.08 //Multiply rate by DELTATIME to get probability per timestep
 #define DELTASPACE 1.0 //Size of a position. This equals 1/resolution in the Fortran code.
-#define INITIALPOPULATIONSIZE 100
-#define XMAX 5
-#define YMAX 5
-#define NPOS XMAX * YMAX
-#define INITIALALTRUISM 0.5
-#define MAXSIZE 1000 //Maximum number of individuals in the population. Note that MAXSIZE can be larger than XMAX*YMAX because multiple individuals are allowed at the same position.
+#define INITIALPOPULATIONSIZE 100 //Q: Fortran: in terms of estimated steady state density
+#define INITIALALTRUISM 0.0
+#define MAXSIZE 5000 //Maximum number of individuals in the population. Note that MAXSIZE can be larger than XMAX*YMAX because multiple individuals are allowed at the same position.
+#define THRESHOLD 0.0000000001 //Numbers lower than this are set to 0
+//Parameters
+#define BIRTHRATE 5.0 //Baseline max birth rate
 #define DEATHRATE 1.0
-#define BIRTHRATE 1.0 //Baseline max birth rate, birth rate for non-altruist
-#define ALTRUISMSCALE 1 //Consider (2*SCALE + 1)^2 fields
-#define COMPETITIONSCALE 4
 #define MUTATIONPROBABILITY 0.001
 #define MEANMUTSIZEALTRUISM 0.005
-#define MOVEMENTSCALE 1
-#define MOVE 0 //Probability to move in x direction = probability to move in y direction
+#define ALTRUISMSCALE 1 //Consider (2*SCALE + 1)^2 fields
+#define COMPETITIONSCALE 4
+#define MOVEMENTSCALE 0.283 //Q: Fortran: sqrt(2 * DIFFUSIONCONSTANT * DELTATIME), paper: sqrt(2 * DIFFUSIONCONSTANT/DEATHRATE)
+#define K 40 //Carrying capacity
 #define B0 1.0 //Basal benefit of altruism
 #define BMAX 5.0 //Maximum benefit of altruism
-#define K 40 //Carrying capacity
-#define THRESHOLD 0.0000000001 //Numbers lower than this are set to 0
-#define FIELDS 7 //Number of fields to take into account (in each direction) when creating the normal kernel
-#define OUTPUTUNIT 10 //Number of timesteps between each output print
+#define XMAX 512 //512, 2^9
+#define YMAX XMAX //The arena must be a square; XMAX and YMAX are used for code readability
+#define NPOS XMAX * YMAX
 
 //Declare structures
 struct Individual {
@@ -130,14 +131,14 @@ int main() {
 	outputfile = fopen("filename.txt", "w+");
     for (int t = 0; t < TMAX; t++) {
     	if(t == 0){
-    		printf("Simulation has started!\nProgress (printed every %d timesteps):\n", OUTPUTUNIT);
+    		printf("Simulation has started!\nProgress (printed every %d timesteps):\n", OUTPUTINTERVAL);
     	}
     	//printf("\rProgress: %d out of %d timesteps.", t, TMAX);
-    	if(t % OUTPUTUNIT == 0){
+    	if(t % OUTPUTINTERVAL == 0){
     		printf("%d out of %d timesteps.\n", t, TMAX);
     	}
-    	printMeanAltruismToFile(outputfile, t);
-    	printPopulationSizeToFile(outputfile, t);
+    	//printMeanAltruismToFile(outputfile, t);
+    	//printPopulationSizeToFile(outputfile, t);
     	newborns = 0;
 		deaths = 0;
     	createLocalDensityMatrix();
@@ -497,7 +498,7 @@ void printParametersToFile(FILE *filename){
 	fprintf(filename, "Mean mutation size altruism = %f\n", MEANMUTSIZEALTRUISM);
 	fprintf(filename, "Scale of altruism = %d\n", ALTRUISMSCALE);
 	fprintf(filename, "Scale of competition = %d\n", COMPETITIONSCALE);
-	fprintf(filename, "Scale of movement = %d\n", MOVEMENTSCALE);
+	fprintf(filename, "Scale of movement = %f\n", MOVEMENTSCALE);
 	fprintf(filename, "B0 = %f\n", B0);
 	fprintf(filename, "BMAX = %f\n", BMAX);
 	fprintf(filename, "K = %d\n", K);
@@ -513,7 +514,7 @@ void printMeanAltruismToFile(FILE *filename, int timestep){
 		printParametersToFile(filename);
 		fprintf(filename, "Timestep Time Mean_altruism_level\n");
 	}
-	if(timestep % OUTPUTUNIT == 0){
+	if(timestep % OUTPUTINTERVAL == 0){
 		double cumulative_altruism;
 		for(int i = 0; i < population_size_old; i++){
 			cumulative_altruism += individuals_old[i].altruism;
@@ -532,7 +533,7 @@ void printPopulationSizeToFile(FILE *filename, int timestep){
 		printParametersToFile(filename);
 		fprintf(filename, "Timestep Time Population_size\n");
 	}
-	if(timestep % OUTPUTUNIT == 0){
+	if(timestep % OUTPUTINTERVAL == 0){
 		fprintf(filename, "%d %f %d\n", timestep, timestep*DELTATIME, population_size_old);
 	}
 }
@@ -545,7 +546,7 @@ void printSummedMatrixToFile(FILE *filename, int timestep){
 		printParametersToFile(filename);
 		fprintf(filename, "Timestep Time sum_density sum_convolution_density sum_altruism sum_convolution_altruism\n");
 	}
-	if(timestep % OUTPUTUNIT == 0){
+	if(timestep % OUTPUTINTERVAL == 0){
 		fprintf(filename, "%d %f %f %f %f %f\n", timestep, timestep*DELTATIME, sumMatrix(density), sumMatrix(normal_density_convolution), sumMatrix(altruism), sumMatrix(normal_altruism_convolution));
 	}
 }
@@ -556,8 +557,9 @@ void printSummedMatrixToFile(FILE *filename, int timestep){
 double sumMatrix(fftw_complex* matrix){
 	double sum = 0.0;
 	for(int index = 0; index < NPOS; index++){
-		if(cimag(matrix[index]) != 0){
-			printf("Warning: sumMatrix() is used to sum real parts of fftw_complex object, but not all imaginary parts are 0.");
+		if(cimag(matrix[index]) != 0 || cimag(matrix[index]) != -0){
+			//printf("\nWarning: sumMatrix() is used to sum real parts of fftw_complex object, but not all imaginary parts are 0.");
+			//printf("\nNumber: %f+%f*i", creal(matrix[index]), cimag(matrix[index]));
 		}
 		sum += creal(matrix[index]);
 	}
