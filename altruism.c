@@ -44,7 +44,7 @@ void printSummedMatrixToFile(FILE*, int);
 double sumMatrix(fftw_complex*);
 
 //Define parameters TODO: Put in order of usage
-#define TMAX 200
+#define TMAX 5
 #define DELTATIME 0.1 //Multiply rate by DELTATIME to get probability per timestep
 #define DELTASPACE 1.0 //Size of a position. This equals 1/resolution in the Fortran code.
 #define INITIALPOPULATIONSIZE 100
@@ -126,8 +126,8 @@ int main() {
 	makeIndividuals();
 	population_size_old = INITIALPOPULATIONSIZE;
 	population_size_new = 0;
-	//FILE *outputfile;
-	//outputfile = fopen("filename.txt", "w+");
+	FILE *outputfile;
+	outputfile = fopen("filename.txt", "w+");
     for (int t = 0; t < TMAX; t++) {
     	if(t == 0){
     		printf("Simulation has started!\nProgress (printed every %d timesteps):\n", OUTPUTUNIT);
@@ -136,13 +136,13 @@ int main() {
     	if(t % OUTPUTUNIT == 0){
     		printf("%d out of %d timesteps.\n", t, TMAX);
     	}
-    	//printMeanAltruismToFile(outputfile, t);
-    	//printPopulationSizeToFile(outputfile, t);
+    	printMeanAltruismToFile(outputfile, t);
+    	printPopulationSizeToFile(outputfile, t);
     	newborns = 0;
 		deaths = 0;
     	createLocalDensityMatrix();
     	createExperiencedAltruismMatrix();
-    	//printSummedMatrixToFile(outputfile, t);
+    	printSummedMatrixToFile(outputfile, t);
 		for (int i = 0; i < population_size_old; i++){
 			i_new = i + newborns - deaths; //The index of i in the new timestep, taking into account births and deaths the current timestep
 			double probabilityOfEvent = genrand64_real2();
@@ -339,18 +339,8 @@ void fillAltruismMatrix(){
 void moveIndividual(int i){ //TODO: Try using modulo here
 	int move_x = round(randomNormal()*MOVEMENTSCALE*(1/DELTASPACE));
 	int move_y = round(randomNormal()*MOVEMENTSCALE*(1/DELTASPACE));
-	if(individuals_old[i].xpos + move_x > XMAX){
-		individuals_new[i].xpos = (individuals_old[i].xpos + move_x ) % XMAX;
-	}
-	else{
-		individuals_new[i].xpos = individuals_old[i].xpos + move_x;
-	}
-	if(individuals_old[i].ypos + move_y > YMAX){
-		individuals_new[i].ypos = (individuals_old[i].ypos + move_y) % YMAX;
-	}
-	else{
-		individuals_new[i].ypos = individuals_old[i].ypos + move_y;
-	}
+	individuals_new[i].xpos = ((individuals_old[i].xpos + move_x + XMAX -1) % XMAX)+1;
+	individuals_new[i].ypos = ((individuals_old[i].ypos + move_y + YMAX -1) % YMAX)+1;
 }
 /**
  * Creates two independent random standard normal variables
@@ -360,8 +350,9 @@ double randomNormal(void){
 	double uni2 = 1-2*genrand64_real2();
 	double s = uni1*uni1 + uni2*uni2;
 	while (s >= 1){
-		double uni1 = 1-2*genrand64_real2();
-		double uni2 = 1-2*genrand64_real2();
+		uni1 = 1-2*genrand64_real2();
+		uni2 = 1-2*genrand64_real2();
+		s = uni1*uni1 + uni2*uni2;
 	}
 	double random_normal = uni1*sqrt(-2*log(s)/s);
 	//double random_normal2 = x2*sqrt(-2*log(s)/s); //This outputs a second independent random normal, would be better to use this each time
