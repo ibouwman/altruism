@@ -415,7 +415,7 @@ void reproduceIndividual(int i){
 	individuals_new[i_new+1].p = considerMutation(individuals_new[i_new+1].p, MEANMUTSIZEP);
 	if(individuals_new[i_new+1].p > 1.0){ //Probability cannot become larger than 1
 		individuals_new[i_new+1].p = 1.0;
-	}
+	} //TODO: Warning for altruism > 1?
 	double random_phenotype = genrand64_real2(); //Is altruism expressed or not? Depends on p
 	if (random_phenotype < individuals_new[i_new+1].p){ //p is the probability to express altruism
 		individuals_new[i_new+1].phenotype = 1;
