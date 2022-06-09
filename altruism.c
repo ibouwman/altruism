@@ -333,10 +333,10 @@ void fillAltruismMatrix(){
 }
 
 /**
- * Assigns a new position in the field to the input individual. TODO: Change/replace this function to use a diffusion process (using DELTATIME)
+ * Assigns a new position in the field to the input individual.
  * i: The individual to move.
  */
-void moveIndividual(int i){ //TODO: Try using modulo here
+void moveIndividual(int i){
 	int move_x = round(randomNormal()*MOVEMENTSCALE*(1/DELTASPACE));
 	int move_y = round(randomNormal()*MOVEMENTSCALE*(1/DELTASPACE));
 	individuals_new[i].xpos = ((individuals_old[i].xpos + move_x + XMAX -1) % XMAX)+1;
@@ -355,7 +355,7 @@ double randomNormal(void){
 		s = uni1*uni1 + uni2*uni2;
 	}
 	double random_normal = uni1*sqrt(-2*log(s)/s);
-	//double random_normal2 = x2*sqrt(-2*log(s)/s); //This outputs a second independent random normal, would be better to use this each time
+	//double random_normal2 = x2*sqrt(-2*log(s)/s); //TODO: This outputs a second independent random normal, would be better to use this each time
 	return random_normal; //
 }
 /**
