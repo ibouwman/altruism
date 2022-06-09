@@ -28,6 +28,7 @@ void fillDensityMatrix(void);
 void createExperiencedAltruismMatrix(void);
 void fillAltruismMatrix(void);
 void moveIndividual(int);
+double randomNormal(void);
 double calculateBirthRate(int);
 void reproduceIndividual(int);
 double considerMutation(double, double);
@@ -46,8 +47,7 @@ void printSummedMatrixToFile(FILE*, int);
 double sumMatrix(fftw_complex*);
 
 //Define parameters TODO: Put in order of usage
-//!! NB: Set INITIALB to 0 and INITIALP to 1 for initial model (without phenotypic differentiation) !!
-#define TMAX 200
+#define TMAX 5
 #define DELTATIME 0.1 //Multiply rate by DELTATIME to get probability per timestep
 #define DELTASPACE 1.0 //Size of a position. This equals 1/resolution in the Fortran code.
 #define INITIALA 20
@@ -76,7 +76,7 @@ double sumMatrix(fftw_complex*);
 #define K 40 //Carrying capacity
 #define THRESHOLD 0.0000000001 //Numbers lower than this are set to 0
 #define FIELDS 7 //Number of fields to take into account (in each direction) when creating the normal kernel
-#define OUTPUTUNIT 5 //Number of timesteps between each output print
+#define OUTPUTUNIT 10 //Number of timesteps between each output print
 
 //Declare structures
 struct Individual {
@@ -144,7 +144,10 @@ int main() {
 	outputfile = fopen("filename.txt", "w+");
     for (int t = 0; t < TMAX; t++) {
     	if(t == 0){
-    		printf("Simulation has started!\n");
+    		printf("Simulation has started!\nProgress (printed every %d timesteps):\n", OUTPUTUNIT);
+    	}
+    	if(t % OUTPUTUNIT == 0){
+    	    printf("%d out of %d timesteps.\n", t, TMAX);
     	}
     	countPhenotypes();
     	if((A_counter + B_counter) != population_size_old){
@@ -158,7 +161,7 @@ int main() {
 		deaths = 0;
     	createLocalDensityMatrix();
     	createExperiencedAltruismMatrix();
-    	//printSummedMatrixToFile(outputfile, t);
+    	printSummedMatrixToFile(outputfile, t);
 		for (int i = 0; i < population_size_old; i++){
 			i_new = i + newborns - deaths; //The index of i in the new timestep, taking into account births and deaths of the current timestep
 			double probabilityOfEvent = genrand64_real2();
@@ -166,14 +169,14 @@ int main() {
 				deaths += 1;
 			}
 			else{ //If individual doesn't die...
-				moveIndividual(i); //...Move it
+				//moveIndividual(i); //...Move it
 				individuals_new[i_new] = individuals_old[i];
 				population_size_new += 1; //...And add it to the population size of the new state.
 				double birth_rate = calculateBirthRate(i);
 				if (probabilityOfEvent < DEATHRATE*DELTATIME + birth_rate*DELTATIME){ //If the individual reproduces...
 					reproduceIndividual(i); //...Create the child
 					population_size_new += 1; //...And add it to the population size of the next timestep
-					moveIndividual(i_new + 1); //Move the child: Index of child = index of parent in the new state + 1
+					//moveIndividual(i_new + 1); //Move the child: Index of child = index of parent in the new state + 1
 					newborns += 1;
 				}
 			}
@@ -183,7 +186,7 @@ int main() {
    }
    destroyFFTWplans();
    freeMemory();
-   printf("Done.\n");
+   printf("\nDone.\n");
    return 0;
 }
 
@@ -264,7 +267,7 @@ void createNormalKernel(int scale, fftw_complex* normal_kernel2D){
  * Creates the initial individuals. Called once at the beginning of the code.
  */
 void makeIndividuals(){
-	for (int i = 0; i < INITIALPOPULATIONSIZE; i++){ //First fill in all initial parameters that are the same for As and Bs
+	for (int i = 0; i < INITIALPOPULATIONSIZE; i++){
 		individuals_old[i].xpos = rand() % XMAX+1;;
 		individuals_old[i].ypos = rand() % YMAX+1;
 		individuals_old[i].altruism = genrand64_real2(); //INITIALALTRUISM;
@@ -356,36 +359,31 @@ void fillAltruismMatrix(){
 }
 
 /**
- * Assigns a new position in the field to the input individual. TODO: Change/replace this function to use a diffusion process (using DELTATIME)
+ * Assigns a new position in the field to the input individual.
  * i: The individual to move.
  */
-void moveIndividual(int i){ //TODO: Try using modulo here
-	double move_x = genrand64_real2();
-	double move_y = genrand64_real2();
-	if (move_x < MOVE){
-		double random = genrand64_real2();
-		if (random < 0.5){
-			if (individuals_old[i].xpos+MOVEMENTSCALE*(1/DELTASPACE) <= XMAX){
-				individuals_new[i].xpos = individuals_old[i].xpos+MOVEMENTSCALE*(1/DELTASPACE);
-			}
-		}
-		else if (individuals_old[i].xpos-MOVEMENTSCALE*(1/DELTASPACE) > 0){
-			individuals_new[i].xpos = individuals_old[i].xpos-MOVEMENTSCALE*(1/DELTASPACE);
-		}
-	}
-	if (move_y < MOVE){
-		double random = genrand64_real2();
-		if (random < 0.5){
-			if (individuals_old[i].ypos+MOVEMENTSCALE*(1/DELTASPACE) <= YMAX){
-				individuals_new[i].ypos = individuals_old[i].ypos+MOVEMENTSCALE*(1/DELTASPACE);
-			}
-		}
-		else if (individuals_old[i].ypos-MOVEMENTSCALE*(1/DELTASPACE) > 0){
-			individuals_new[i].ypos = individuals_old[i].ypos-MOVEMENTSCALE*(1/DELTASPACE);
-		}
-	}
+void moveIndividual(int i){
+	int move_x = round(randomNormal()*MOVEMENTSCALE*(1/DELTASPACE));
+	int move_y = round(randomNormal()*MOVEMENTSCALE*(1/DELTASPACE));
+	individuals_new[i].xpos = ((individuals_old[i].xpos + move_x + XMAX -1) % XMAX)+1;
+	individuals_new[i].ypos = ((individuals_old[i].ypos + move_y + YMAX -1) % YMAX)+1;
 }
-
+/**
+ * Creates two independent random standard normal variables
+ */
+double randomNormal(void){
+	double uni1 = 1-2*genrand64_real2();
+	double uni2 = 1-2*genrand64_real2();
+	double s = uni1*uni1 + uni2*uni2;
+	while (s >= 1){
+		uni1 = 1-2*genrand64_real2();
+		uni2 = 1-2*genrand64_real2();
+		s = uni1*uni1 + uni2*uni2;
+	}
+	double random_normal = uni1*sqrt(-2*log(s)/s);
+	//double random_normal2 = x2*sqrt(-2*log(s)/s); //TODO: This outputs a second independent random normal, would be better to use this each time
+	return random_normal; //
+}
 /**
  * Calculates the birth rate of the input individual.
  * i: The individual whose birth rate is calculated.
