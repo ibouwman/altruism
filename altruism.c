@@ -71,7 +71,7 @@ double sumMatrix(fftw_complex*);
 #define B0 1.0 //Basal benefit of altruism
 #define BMAX 5.0 //Maximum benefit of altruism
 #define ALPHA 0.25
-#define BETA 0.75
+#define BETA (1 - ALPHA)*K
 #define KAPPA 1.0
 #define K 40 //Carrying capacity
 #define THRESHOLD 0.0000000001 //Numbers lower than this are set to 0
