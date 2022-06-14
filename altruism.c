@@ -49,26 +49,27 @@ double sumMatrix(fftw_complex*);
 //Define parameters and settings, following 2D/parameters in the Fortran code (and Table 1 of the paper)
 //Settings
 #define TMAX 101
-#define OUTPUTINTERVAL 10 //50 //Number of timesteps between each output print
+#define OUTPUTINTERVAL 50 //Number of timesteps between each output print
 #define FIELDS 7 //Number of fields to take into account (in each direction) when creating the normal kernel
 #define DELTATIME 0.08 //Multiply rate by DELTATIME to get probability per timestep
 #define DELTASPACE 1.0 //Size of a position. This equals 1/resolution in the Fortran code.
-#define INITIALPOPULATIONSIZE 100 //Q: Fortran: in terms of estimated steady state density
+#define STEADYSTATEDENSITY (1 - DEATHRATE/BIRTHRATE) * K
+#define GRIDSIZE (XMAX * DELTASPACE) * (YMAX * DELTASPACE)
 #define INITIALALTRUISM 0.0
-#define MAXSIZE 5000 //Maximum number of individuals in the population. Note that MAXSIZE can be larger than XMAX*YMAX because multiple individuals are allowed at the same position.
 #define THRESHOLD 0.0000000001 //Numbers lower than this are set to 0
 //Parameters
 #define BIRTHRATE 5.0 //Baseline max birth rate
 #define DEATHRATE 1.0
 #define MUTATIONPROBABILITY 0.001
 #define MEANMUTSIZEALTRUISM 0.005
-#define ALTRUISMSCALE 1 //Consider (2*SCALE + 1)^2 fields
+#define ALTRUISMSCALE 1
 #define COMPETITIONSCALE 4
-#define MOVEMENTSCALE 0.283 //Q: Fortran: sqrt(2 * DIFFUSIONCONSTANT * DELTATIME), paper: sqrt(2 * DIFFUSIONCONSTANT/DEATHRATE)
+#define DIFFUSIONCONSTANT 0.04
+#define MOVEMENTSCALE sqrt(2 * DIFFUSIONCONSTANT * DELTATIME)
 #define K 40 //Carrying capacity
 #define B0 1.0 //Basal benefit of altruism
 #define BMAX 5.0 //Maximum benefit of altruism
-#define XMAX 512 //512, 2^9
+#define XMAX 512
 #define YMAX XMAX //The arena must be a square; XMAX and YMAX are used for code readability
 #define NPOS XMAX * YMAX
 
@@ -108,6 +109,8 @@ struct Individual* individuals_new; //This is the 'new state'
 struct Individual** individuals_old_ptr;
 struct Individual** individuals_new_ptr;
 
+int INITIALPOPULATIONSIZE = round(STEADYSTATEDENSITY * GRIDSIZE); //Initial and maximal population size depend on steady state density and grid size.
+int MAXPOPULATIONSIZE = round(1.5 * K * GRIDSIZE); //Note that MAXPOPULATIONSIZE can be larger than NPOS because multiple individuals are allowed at the same position.
 int newborns;
 int deaths;
 int i_new;
@@ -136,7 +139,6 @@ int main() {
     	if(t == 0){
     		printf("Simulation has started!\nProgress (printed every %d timesteps):\n", OUTPUTINTERVAL);
     	}
-    	//printf("\rProgress: %d out of %d timesteps.", t, TMAX);
     	if(t % OUTPUTINTERVAL == 0){
     		printf("%d out of %d timesteps.\n", t, TMAX);
     	}
@@ -146,8 +148,8 @@ int main() {
 		deaths = 0;
     	createLocalDensityMatrix();
     	createExperiencedAltruismMatrix();
-    	//printSummedMatrixToFile(outputfile, t);
-    	printPerCellStatistics(outputfile, t);
+    	printSummedMatrixToFile(outputfile, t);
+    	//printPerCellStatistics(outputfile, t);
 		for (int i = 0; i < population_size_old; i++){
 			i_new = i + newborns - deaths; //The index of i in the new timestep, taking into account births and deaths the current timestep
 			double probabilityOfEvent = genrand64_real2();
@@ -180,8 +182,8 @@ int main() {
  * Allocates memory for the arrays and fftw_complex objects used in the code.
  */
 void allocateMemory(void){
-    individuals_old = malloc(MAXSIZE * sizeof(struct Individual));
-    individuals_new = malloc(MAXSIZE * sizeof(struct Individual));
+    individuals_old = malloc(MAXPOPULATIONSIZE * sizeof(struct Individual));
+    individuals_new = malloc(MAXPOPULATIONSIZE * sizeof(struct Individual));
     if (individuals_old == NULL) {
         printf("ERROR: Memory for individuals_old not allocated.\n");
         exit(1);
@@ -400,12 +402,12 @@ double randomExponential(void){
 
 /**
  * Checks whether the population size is not out of bounds.
- * Stops run and throws error when population size is above MAXSIZE or below 0.
+ * Stops run and throws error when population size is above MAXPOPULATIONSIZE or below 0.
  * Stops run and prints message when population size is 0 i.e. population died out.
  */
 void checkPopulationSize(int t){
-	if ((population_size_new > MAXSIZE) || population_size_new < 0){
-		printf("\nERROR: Population size must be between 0 and %d, but population size for next timestep (t = %d) is %d.\n", MAXSIZE, t+1, population_size_new);
+	if ((population_size_new > MAXPOPULATIONSIZE) || population_size_new < 0){
+		printf("\nERROR: Population size must be between 0 and %d, but population size for next timestep (t = %d) is %d.\n", MAXPOPULATIONSIZE, t+1, population_size_new);
 		exit(1);
 	}
 	else if (population_size_new == 0){
@@ -420,7 +422,7 @@ void checkPopulationSize(int t){
 void updateStates(){
 	individuals_old_ptr = &individuals_old; //Make pointers to pointers, this is necessary to swap old and new individuals
 	individuals_new_ptr = &individuals_new;
-	memset(individuals_old, 0, MAXSIZE * sizeof(*individuals_old)); //Delete the old individuals, i.e. set array to 0
+	memset(individuals_old, 0, MAXPOPULATIONSIZE * sizeof(*individuals_old)); //Delete the old individuals, i.e. set array to 0
 	struct Individual* temp = *individuals_old_ptr; //Make a temp ptr that points to the old individuals, now filled with 0s
 	*individuals_old_ptr = *individuals_new_ptr; //New individuals become old individuals
 	*individuals_new_ptr = temp; //Reset the new individuals for the next state by pointing to the block with 0s
@@ -565,9 +567,8 @@ void printSummedMatrixToFile(FILE *filename, int timestep){
 double sumMatrix(fftw_complex* matrix){
 	double sum = 0.0;
 	for(int index = 0; index < NPOS; index++){
-		if(cimag(matrix[index]) != 0 || cimag(matrix[index]) != -0){
+		if(cimag(matrix[index]) < -THRESHOLD || cimag(matrix[index]) > THRESHOLD){
 			printf("\nWarning: sumMatrix() is used to sum real parts of fftw_complex object, but not all imaginary parts are 0.");
-			//printf("\nNumber: %f+%f*i", creal(matrix[index]), cimag(matrix[index]));
 		}
 		sum += creal(matrix[index]);
 	}
