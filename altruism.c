@@ -6,6 +6,7 @@
  */
 
 //Include
+# include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -14,6 +15,8 @@
 #include "mt64.h"
 #include <complex.h>
 #include <fftw3.h>
+#include "ziggurat.h"
+#include "random.h"
 
 //Declare functions (in order of usage)
 //Functions used in main():
@@ -28,7 +31,6 @@ void fillDensityMatrix(void);
 void createExperiencedAltruismMatrix(void);
 void fillAltruismMatrix(void);
 void moveIndividual(int);
-double randomNormal(void);
 double calculateBirthRate(int);
 void reproduceIndividual(int);
 double randomExponential(void);
@@ -339,28 +341,14 @@ void fillAltruismMatrix(){
  * Assigns a new position in the field to the input individual.
  * i: The individual to move.
  */
-void moveIndividual(int i){
-	int move_x = round(randomNormal()*MOVEMENTSCALE*(1/DELTASPACE));
-	int move_y = round(randomNormal()*MOVEMENTSCALE*(1/DELTASPACE));
+void moveIndividual(int i){ //TODO: Try using modulo here
+	void * r = random_new(time(NULL));
+	int move_x = round(random_normal(r, 0, MOVEMENTSCALE/DELTASPACE));
+	int move_y = round(random_normal(r, 0, MOVEMENTSCALE/DELTASPACE));
 	individuals_new[i].xpos = ((individuals_old[i].xpos + move_x + XMAX -1) % XMAX)+1;
 	individuals_new[i].ypos = ((individuals_old[i].ypos + move_y + YMAX -1) % YMAX)+1;
 }
-/**
- * Creates two independent random standard normal variables
- */
-double randomNormal(void){
-	double uni1 = 1-2*genrand64_real2();
-	double uni2 = 1-2*genrand64_real2();
-	double s = uni1*uni1 + uni2*uni2;
-	while (s >= 1){
-		uni1 = 1-2*genrand64_real2();
-		uni2 = 1-2*genrand64_real2();
-		s = uni1*uni1 + uni2*uni2;
-	}
-	double random_normal = uni1*sqrt(-2*log(s)/s);
-	//double random_normal2 = x2*sqrt(-2*log(s)/s); //TODO: This outputs a second independent random normal, would be better to use this each time
-	return random_normal; //
-}
+
 /**
  * Calculates the birth rate of the input individual.
  * i: The individual whose birth rate is calculated.
