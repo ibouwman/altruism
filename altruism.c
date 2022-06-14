@@ -40,6 +40,7 @@ void freeMemory(void);
 void printParametersToFile(FILE*);
 void printMeanAltruismToFile(FILE*, int);
 void printPopulationSizeToFile(FILE*, int);
+void printPerCellStatistics(FILE*, int);
 void printSummedMatrixToFile(FILE*, int);
 double sumMatrix(fftw_complex*);
 
@@ -143,7 +144,8 @@ int main() {
 		deaths = 0;
     	createLocalDensityMatrix();
     	createExperiencedAltruismMatrix();
-    	printSummedMatrixToFile(outputfile, t);
+    	//printSummedMatrixToFile(outputfile, t);
+    	printPerCellStatistics(outputfile, t);
 		for (int i = 0; i < population_size_old; i++){
 			i_new = i + newborns - deaths; //The index of i in the new timestep, taking into account births and deaths the current timestep
 			double probabilityOfEvent = genrand64_real2();
@@ -539,6 +541,24 @@ void printPopulationSizeToFile(FILE *filename, int timestep){
 }
 
 /**
+ * Print to file the number of individuals, cumulative altruism level, and experienced altruism per cell.
+ * Calls the printParametersToFile() function.
+ */
+void printPerCellStatistics(FILE *filename, int timestep){
+	if(timestep == 0){
+		printParametersToFile(filename);
+		fprintf(filename, "Timestep Time Position X Y Density Cumulative_altruism Experienced_altruism\n");
+	}
+	if(timestep % OUTPUTINTERVAL == 0){
+		for(int position = 0; position < NPOS; position++){
+			int x = floor(position/XMAX) + 1; //TODO: Maybe make functions to convert from x and y to position and back
+			int y = (position % XMAX) + 1;
+			fprintf(filename, "%d %f %d %d %d %f %f %f\n", timestep, timestep*DELTATIME, position, x, y, creal(density[position]), creal(altruism[position]), creal(normal_altruism_convolution[position]));
+		}
+	}
+}
+
+/**
  * Print the sum of the matrix before and after convolution with the normal kernel.
  */
 void printSummedMatrixToFile(FILE *filename, int timestep){
@@ -558,7 +578,7 @@ double sumMatrix(fftw_complex* matrix){
 	double sum = 0.0;
 	for(int index = 0; index < NPOS; index++){
 		if(cimag(matrix[index]) != 0 || cimag(matrix[index]) != -0){
-			//printf("\nWarning: sumMatrix() is used to sum real parts of fftw_complex object, but not all imaginary parts are 0.");
+			printf("\nWarning: sumMatrix() is used to sum real parts of fftw_complex object, but not all imaginary parts are 0.");
 			//printf("\nNumber: %f+%f*i", creal(matrix[index]), cimag(matrix[index]));
 		}
 		sum += creal(matrix[index]);
