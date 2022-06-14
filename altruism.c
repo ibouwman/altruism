@@ -43,6 +43,9 @@ void printParametersToFile(FILE*);
 void printMeanAltruismToFile(FILE*, int);
 void printPopulationSizeToFile(FILE*, int);
 void printPerCellStatistics(FILE*, int);
+void printExperiencedAltruismMatrixToFile(void);
+void printDensityMatrixToFile(void);
+void printSummedAltruismMatrixToFile(void);
 void printSummedMatrixToFile(FILE*, int);
 double sumMatrix(fftw_complex*);
 
@@ -115,6 +118,14 @@ int newborns;
 int deaths;
 int i_new;
 
+//Output files with the input matrices for Mathematica
+FILE *expaltr_file;
+FILE *density_file;
+FILE *sumaltr_file;
+char filename_experienced_altruism[50];
+char filename_summed_altruism[50];
+char filename_density[50];
+
 //Main
 int main() {
 	time_t tm;
@@ -133,14 +144,11 @@ int main() {
 	makeIndividuals();
 	population_size_old = INITIALPOPULATIONSIZE;
 	population_size_new = 0;
-	FILE *outputfile;
-	outputfile = fopen("filename.txt", "w+");
+	//FILE *outputfile;
+	//outputfile = fopen("filename.txt", "w+");
     for (int t = 0; t < TMAX; t++) {
     	if(t == 0){
     		printf("Simulation has started!\nProgress (printed every %d timesteps):\n", OUTPUTINTERVAL);
-    	}
-    	if(t % OUTPUTINTERVAL == 0){
-    		printf("%d out of %d timesteps.\n", t, TMAX);
     	}
     	//printMeanAltruismToFile(outputfile, t);
     	//printPopulationSizeToFile(outputfile, t);
@@ -148,7 +156,19 @@ int main() {
 		deaths = 0;
     	createLocalDensityMatrix();
     	createExperiencedAltruismMatrix();
-    	printSummedMatrixToFile(outputfile, t);
+    	if(t % OUTPUTINTERVAL == 0){
+    		printf("%d out of %d timesteps.\n", t, TMAX);
+        	sprintf(filename_experienced_altruism, "expaltr_t%d.txt", t);
+        	expaltr_file = fopen(filename_experienced_altruism, "w+");
+        	sprintf(filename_summed_altruism, "sumaltr_t%d.txt", t);
+        	sumaltr_file = fopen(filename_summed_altruism, "w+");
+        	sprintf(filename_density, "density_t%d.txt", t);
+        	density_file = fopen(filename_density, "w+");
+        	printExperiencedAltruismMatrixToFile();
+        	printDensityMatrixToFile();
+        	printSummedAltruismMatrixToFile();
+    	}
+    	//printSummedMatrixToFile(outputfile, t);
     	//printPerCellStatistics(outputfile, t);
 		for (int i = 0; i < population_size_old; i++){
 			i_new = i + newborns - deaths; //The index of i in the new timestep, taking into account births and deaths the current timestep
@@ -545,6 +565,57 @@ void printPerCellStatistics(FILE *filename, int timestep){
 			int y = (position % XMAX) + 1;
 			fprintf(filename, "%d %f %d %d %d %f %f %f\n", timestep, timestep*DELTATIME, position, x, y, creal(density[position]), creal(altruism[position]), creal(normal_altruism_convolution[position]));
 		}
+	}
+}
+
+/**
+ * Prints the experienced altruism per cell for a timestep in a tab-separated matrix that reflects the grid.
+ * Should be called not more than once per timestep. Make sure to call createExperiencedAltruismMatrix() first.
+ */
+void printExperiencedAltruismMatrixToFile(){
+	for(int index = 0; index < NPOS; index++){
+		if(index != 0){
+			if(index % XMAX == 0){
+				fprintf(expaltr_file, "\n");
+			} else {
+				fprintf(expaltr_file, "\t");
+			}
+		}
+		fprintf(expaltr_file, "%f", creal(normal_altruism_convolution[index]));
+	}
+}
+
+/**
+ * Prints the density (number of individuals) per cell for a timestep in a tab-separated matrix that represents the grid.
+ * Should be called not more than once per timestep. Make sure to call createDensityMatrix() first.
+ */
+void printDensityMatrixToFile(){
+	for(int index = 0; index < NPOS; index++){
+		if(index != 0){
+			if(index % XMAX == 0){
+				fprintf(density_file, "\n");
+			} else {
+				fprintf(density_file, "\t");
+			}
+		}
+		fprintf(density_file, "%f", creal(density[index]));
+	}
+}
+
+/**
+ * Prints the summed altruism levels of the individuals per cell for a timestep in a tab-separated matrix that reflects the grid.
+ * Should be called not more than once per timestep. Make sure to call createExperiencedAltruismMatrix() first, because this calls fillAltruismMatrix().
+ */
+void printSummedAltruismMatrixToFile(){
+	for(int index = 0; index < NPOS; index++){
+		if(index != 0){
+			if(index % XMAX == 0){
+				fprintf(sumaltr_file, "\n");
+			} else {
+				fprintf(sumaltr_file, "\t");
+			}
+		}
+		fprintf(sumaltr_file, "%f", creal(altruism[index]));
 	}
 }
 
