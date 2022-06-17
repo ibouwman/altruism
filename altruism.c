@@ -43,6 +43,7 @@ void printParametersToFile(FILE*);
 void printMeanAltruismToFile(FILE*, int);
 void printPopulationSizeToFile(FILE*, int);
 void printPhenotypesToFile(FILE*, int);
+void printTraitsPerIndividualToFile(void);
 void printSummedMatrixToFile(FILE*, int);
 double sumMatrix(fftw_complex*);
 
@@ -122,6 +123,9 @@ int i_new;
 int A_counter;
 int B_counter;
 
+FILE *traits_file;
+char filename_traits[50];
+
 //Main
 int main() {
 	time_t tm;
@@ -140,8 +144,8 @@ int main() {
 	makeIndividuals();
 	population_size_old = INITIALPOPULATIONSIZE;
 	population_size_new = 0;
-	FILE *outputfile;
-	outputfile = fopen("filename.txt", "w+");
+	//FILE *outputfile;
+	//outputfile = fopen("filename.txt", "w+");
     for (int t = 0; t < TMAX; t++) {
     	if(t == 0){
     		printf("Simulation has started!\nProgress (printed every %d timesteps):\n", OUTPUTUNIT);
@@ -155,13 +159,18 @@ int main() {
     		exit(1);
     	}
     	//printPhenotypesToFile(outputfile, t);
-    	printMeanAltruismToFile(outputfile, t);
+    	//printMeanAltruismToFile(outputfile, t);
     	//printPopulationSizeToFile(outputfile, t);
     	newborns = 0;
 		deaths = 0;
     	createLocalDensityMatrix();
     	createExperiencedAltruismMatrix();
-    	printSummedMatrixToFile(outputfile, t);
+    	if(t % OUTPUTINTERVAL == 0){
+    		sprintf(filename_traits, "traits_t%d.txt", t);
+    		traits_file = fopen(filename_traits, "w+");
+    		printTraitsPerIndividualToFile();
+    	}
+    	//printSummedMatrixToFile(outputfile, t);
 		for (int i = 0; i < population_size_old; i++){
 			i_new = i + newborns - deaths; //The index of i in the new timestep, taking into account births and deaths of the current timestep
 			double probabilityOfEvent = genrand64_real2();
@@ -651,6 +660,12 @@ void printPhenotypesToFile(FILE *filename, int timestep){
 	}
 	if(timestep % OUTPUTUNIT == 0){
 		fprintf(filename, "%d %f %d %d %d\n", timestep, timestep*DELTATIME, population_size_old, A_counter, B_counter);
+	}
+}
+
+void printTraitsPerIndividualToFile(void){
+	for(int i = 0; i < population_size_old; i++){
+		fprintf(traits_file, "%f\t%f\n", individuals_old[i].altruism, individuals_old[i].p);
 	}
 }
 
