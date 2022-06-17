@@ -62,8 +62,6 @@ double sumMatrix(fftw_complex*);
 #define DELTASPACE 1.0 //Size of a position. This equals 1/resolution in the Fortran code.
 #define STEADYSTATEDENSITY (1 - DEATHRATE/BIRTHRATE) * K
 #define GRIDSIZE (XMAX * DELTASPACE) * (YMAX * DELTASPACE)
-#define INITIALA 0.5
-#define INITIALB 1.0 - INITIALA
 #define INITIALALTRUISM 0.0
 #define INITIALP 0.5
 #define THRESHOLD 0.0000000001 //Numbers lower than this are set to 0
@@ -126,6 +124,8 @@ struct Individual** individuals_old_ptr;
 struct Individual** individuals_new_ptr;
 
 int INITIALPOPULATIONSIZE = round(STEADYSTATEDENSITY * GRIDSIZE); //Initial and maximal population size depend on steady state density and grid size.
+int INITIALA = round(STEADYSTATEDENSITY * GRIDSIZE);
+int INITIALB = 0;
 int MAXPOPULATIONSIZE = round(1.5 * K * GRIDSIZE); //Note that MAXPOPULATIONSIZE can be larger than NPOS because multiple individuals are allowed at the same position.
 int newborns;
 int deaths;
@@ -183,7 +183,7 @@ int main() {
     		traits_file = fopen(filename_traits, "w+");
     		printTraitsPerIndividualToFile();
     		printf("%d out of %d timesteps.\n", t, TMAX);
-        	sprintf(filename_experienced_altruism, "expaltr_t%d.txt", t);
+        	/*sprintf(filename_experienced_altruism, "expaltr_t%d.txt", t);
         	expaltr_file = fopen(filename_experienced_altruism, "w+");
         	sprintf(filename_summed_altruism, "sumaltr_t%d.txt", t);
         	sumaltr_file = fopen(filename_summed_altruism, "w+");
@@ -191,7 +191,7 @@ int main() {
         	density_file = fopen(filename_density, "w+");
         	printExperiencedAltruismMatrixToFile();
         	printDensityMatrixToFile();
-        	printSummedAltruismMatrixToFile();
+        	printSummedAltruismMatrixToFile();*/
     	}
 		for (int i = 0; i < population_size_old; i++){
 			i_new = i + newborns - deaths; //The index of i in the new timestep, taking into account births and deaths of the current timestep
@@ -604,7 +604,7 @@ void printMeanAltruismToFile(FILE *filename, int timestep){
 		printParametersToFile(filename);
 		fprintf(filename, "Timestep Time Population_size As Bs Mean_altruism_all Mean_altruism_A Mean_altruism_B Mean_cost_A Mean_effective_cost_A Mean_cost_B Mean_effective_cost_B\n");
 	}
-	if(timestep % OUTPUTUNIT == 0){
+	if(timestep % OUTPUTINTERVAL == 0){
 		double cumulative_altruism_all = 0.0;
 		double cumulative_altruism_A = 0.0;
 		double cumulative_altruism_B = 0.0;
@@ -667,14 +667,14 @@ void printPhenotypesToFile(FILE *filename, int timestep){
 		printParametersToFile(filename);
 		fprintf(filename, "Timestep Time Population_size As Bs\n");
 	}
-	if(timestep % OUTPUTUNIT == 0){
+	if(timestep % OUTPUTINTERVAL == 0){
 		fprintf(filename, "%d %f %d %d %d\n", timestep, timestep*DELTATIME, population_size_old, A_counter, B_counter);
 	}
 }
 
 void printTraitsPerIndividualToFile(void){
 	for(int i = 0; i < population_size_old; i++){
-		fprintf(traits_file, "%f\t%f\n", individuals_old[i].altruism, individuals_old[i].p);
+		fprintf(traits_file, "%d\t%f\t%f\n", individuals_old[i].phenotype, individuals_old[i].altruism, individuals_old[i].p);
 	}
 }
 
