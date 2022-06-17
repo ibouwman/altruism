@@ -51,8 +51,8 @@ double sumMatrix(fftw_complex*);
 
 //Define parameters and settings, following 2D/parameters in the Fortran code (and Table 1 of the paper)
 //Settings
-#define TMAX 101
-#define OUTPUTINTERVAL 50 //Number of timesteps between each output print
+#define TMAX 8001
+#define OUTPUTINTERVAL 500 //Number of timesteps between each output print
 #define FIELDS 7 //Number of fields to take into account (in each direction) when creating the normal kernel
 #define DELTATIME 0.08 //Multiply rate by DELTATIME to get probability per timestep
 #define DELTASPACE 1.0 //Size of a position. This equals 1/resolution in the Fortran code.
@@ -72,7 +72,7 @@ double sumMatrix(fftw_complex*);
 #define K 40 //Carrying capacity
 #define B0 1.0 //Basal benefit of altruism
 #define BMAX 5.0 //Maximum benefit of altruism
-#define XMAX 512
+#define XMAX 512 //2**9
 #define YMAX XMAX //The arena must be a square; XMAX and YMAX are used for code readability
 #define NPOS XMAX * YMAX
 
@@ -148,7 +148,7 @@ int main() {
 	//outputfile = fopen("filename.txt", "w+");
     for (int t = 0; t < TMAX; t++) {
     	if(t == 0){
-    		printf("Simulation has started!\nProgress (printed every %d timesteps):\n", OUTPUTINTERVAL);
+    		printf("Simulation has started!\nProgress (printed every 50 timesteps):\n");
     	}
     	//printMeanAltruismToFile(outputfile, t);
     	//printPopulationSizeToFile(outputfile, t);
@@ -156,13 +156,15 @@ int main() {
 		deaths = 0;
     	createLocalDensityMatrix();
     	createExperiencedAltruismMatrix();
-    	if(t % OUTPUTINTERVAL == 0){
+    	if(t % 50 == 0){
     		printf("%d out of %d timesteps.\n", t, TMAX);
-        	sprintf(filename_experienced_altruism, "expaltr_t%d.txt", t);
+    	}
+    	if(t % OUTPUTINTERVAL == 0){
+        	sprintf(filename_experienced_altruism, "220616expaltr_t%d.txt", t);
         	expaltr_file = fopen(filename_experienced_altruism, "w+");
-        	sprintf(filename_summed_altruism, "sumaltr_t%d.txt", t);
+        	sprintf(filename_summed_altruism, "220616sumaltr_t%d.txt", t);
         	sumaltr_file = fopen(filename_summed_altruism, "w+");
-        	sprintf(filename_density, "density_t%d.txt", t);
+        	sprintf(filename_density, "220616density_t%d.txt", t);
         	density_file = fopen(filename_density, "w+");
         	printExperiencedAltruismMatrixToFile();
         	printDensityMatrixToFile();
