@@ -6,6 +6,7 @@
  */
 
 //Include
+# include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -14,6 +15,8 @@
 #include "mt64.h"
 #include <complex.h>
 #include <fftw3.h>
+#include "ziggurat.h"
+#include "random.h"
 
 //Declare functions (in order of usage)
 //Functions used in main():
@@ -28,7 +31,6 @@ void fillDensityMatrix(void);
 void createExperiencedAltruismMatrix(void);
 void fillAltruismMatrix(void);
 void moveIndividual(int);
-double randomNormal(void);
 double calculateBirthRate(int);
 void reproduceIndividual(int);
 double considerMutation(double, double);
@@ -44,40 +46,46 @@ void printMeanAltruismToFile(FILE*, int);
 void printPopulationSizeToFile(FILE*, int);
 void printPhenotypesToFile(FILE*, int);
 void printTraitsPerIndividualToFile(void);
+void printPerCellStatistics(FILE*, int);
+void printExperiencedAltruismMatrixToFile(void);
+void printDensityMatrixToFile(void);
+void printSummedAltruismMatrixToFile(void);
 void printSummedMatrixToFile(FILE*, int);
 double sumMatrix(fftw_complex*);
 
-//Define parameters TODO: Put in order of usage
-#define TMAX 5
-#define DELTATIME 0.1 //Multiply rate by DELTATIME to get probability per timestep
+//Define parameters and settings, following 2D/parameters in the Fortran code (and Table 1 of the paper)
+//Settings
+#define TMAX 101
+#define OUTPUTINTERVAL 50 //Number of timesteps between each output print
+#define FIELDS 7 //Number of fields to take into account (in each direction) when creating the normal kernel
+#define DELTATIME 0.08 //Multiply rate by DELTATIME to get probability per timestep
 #define DELTASPACE 1.0 //Size of a position. This equals 1/resolution in the Fortran code.
-#define INITIALA 20
-#define INITIALB 20
-#define INITIALPOPULATIONSIZE INITIALA + INITIALB
-#define XMAX 10
-#define YMAX 10
-#define NPOS XMAX * YMAX
+#define STEADYSTATEDENSITY (1 - DEATHRATE/BIRTHRATE) * K
+#define GRIDSIZE (XMAX * DELTASPACE) * (YMAX * DELTASPACE)
+#define INITIALA 0.5
+#define INITIALB 1.0 - INITIALA
 #define INITIALALTRUISM 0.0
-#define INITIALP 0.5 //Set to 1 for only A offspring or 0 for only B offspring
-#define MAXSIZE 5000 //Maximum number of individuals in the population. Note that MAXSIZE can be larger than XMAX*YMAX because multiple individuals are allowed at the same position.
+#define INITIALP 0.5
+#define THRESHOLD 0.0000000001 //Numbers lower than this are set to 0
+//Parameters
+#define BIRTHRATE 5.0 //Baseline max birth rate
 #define DEATHRATE 1.0
-#define BIRTHRATE 1.0 //Baseline max birth rate, birth rate for non-altruist
-#define ALTRUISMSCALE 1 //Consider (2*SCALE + 1)^2 fields
-#define COMPETITIONSCALE 4
-#define MUTATIONPROBABILITY 0.0 //0.001
+#define MUTATIONPROBABILITY 0.001
 #define MEANMUTSIZEALTRUISM 0.005
 #define MEANMUTSIZEP 0.005
-#define MOVEMENTSCALE 1
-#define MOVE 0 //Probability to move in x direction = probability to move in y direction
+#define ALTRUISMSCALE 1
+#define COMPETITIONSCALE 4
+#define DIFFUSIONCONSTANT 0.04
+#define MOVEMENTSCALE sqrt(2 * DIFFUSIONCONSTANT * DELTATIME)
+#define K 40 //Carrying capacity
 #define B0 1.0 //Basal benefit of altruism
 #define BMAX 5.0 //Maximum benefit of altruism
 #define ALPHA 0.25
 #define BETA (1 - ALPHA)*K
 #define KAPPA 1.0
-#define K 40 //Carrying capacity
-#define THRESHOLD 0.0000000001 //Numbers lower than this are set to 0
-#define FIELDS 7 //Number of fields to take into account (in each direction) when creating the normal kernel
-#define OUTPUTUNIT 10 //Number of timesteps between each output print
+#define XMAX 512
+#define YMAX XMAX //The arena must be a square; XMAX and YMAX are used for code readability
+#define NPOS XMAX * YMAX
 
 //Declare structures
 struct Individual {
@@ -117,13 +125,22 @@ struct Individual* individuals_new; //This is the 'new state'
 struct Individual** individuals_old_ptr;
 struct Individual** individuals_new_ptr;
 
+int INITIALPOPULATIONSIZE = round(STEADYSTATEDENSITY * GRIDSIZE); //Initial and maximal population size depend on steady state density and grid size.
+int MAXPOPULATIONSIZE = round(1.5 * K * GRIDSIZE); //Note that MAXPOPULATIONSIZE can be larger than NPOS because multiple individuals are allowed at the same position.
 int newborns;
 int deaths;
 int i_new;
 int A_counter;
 int B_counter;
 
+//Output files:
+FILE *expaltr_file;
+FILE *density_file;
+FILE *sumaltr_file;
 FILE *traits_file;
+char filename_experienced_altruism[50];
+char filename_summed_altruism[50];
+char filename_density[50];
 char filename_traits[50];
 
 //Main
@@ -148,17 +165,13 @@ int main() {
 	//outputfile = fopen("filename.txt", "w+");
     for (int t = 0; t < TMAX; t++) {
     	if(t == 0){
-    		printf("Simulation has started!\nProgress (printed every %d timesteps):\n", OUTPUTUNIT);
-    	}
-    	if(t % OUTPUTUNIT == 0){
-    	    printf("%d out of %d timesteps.\n", t, TMAX);
+    		printf("Simulation has started!\nProgress (printed every %d timesteps):\n", OUTPUTINTERVAL);
     	}
     	countPhenotypes();
     	if((A_counter + B_counter) != population_size_old){
     		printf("ERROR: The summed number of individuals per phenotype (A: %d, B: %d) doesn't equal the population size (%d)!\n", A_counter, B_counter, population_size_old);
     		exit(1);
     	}
-    	//printPhenotypesToFile(outputfile, t);
     	//printMeanAltruismToFile(outputfile, t);
     	//printPopulationSizeToFile(outputfile, t);
     	newborns = 0;
@@ -169,8 +182,17 @@ int main() {
     		sprintf(filename_traits, "traits_t%d.txt", t);
     		traits_file = fopen(filename_traits, "w+");
     		printTraitsPerIndividualToFile();
+    		printf("%d out of %d timesteps.\n", t, TMAX);
+        	sprintf(filename_experienced_altruism, "expaltr_t%d.txt", t);
+        	expaltr_file = fopen(filename_experienced_altruism, "w+");
+        	sprintf(filename_summed_altruism, "sumaltr_t%d.txt", t);
+        	sumaltr_file = fopen(filename_summed_altruism, "w+");
+        	sprintf(filename_density, "density_t%d.txt", t);
+        	density_file = fopen(filename_density, "w+");
+        	printExperiencedAltruismMatrixToFile();
+        	printDensityMatrixToFile();
+        	printSummedAltruismMatrixToFile();
     	}
-    	//printSummedMatrixToFile(outputfile, t);
 		for (int i = 0; i < population_size_old; i++){
 			i_new = i + newborns - deaths; //The index of i in the new timestep, taking into account births and deaths of the current timestep
 			double probabilityOfEvent = genrand64_real2();
@@ -203,8 +225,8 @@ int main() {
  * Allocates memory for the arrays and fftw_complex objects used in the code.
  */
 void allocateMemory(void){
-    individuals_old = malloc(MAXSIZE * sizeof(struct Individual));
-    individuals_new = malloc(MAXSIZE * sizeof(struct Individual));
+    individuals_old = malloc(MAXPOPULATIONSIZE * sizeof(struct Individual));
+    individuals_new = malloc(MAXPOPULATIONSIZE * sizeof(struct Individual));
     if (individuals_old == NULL) {
         printf("ERROR: Memory for individuals_old not allocated.\n");
         exit(1);
@@ -371,28 +393,15 @@ void fillAltruismMatrix(){
  * Assigns a new position in the field to the input individual.
  * i: The individual to move.
  */
-void moveIndividual(int i){
-	int move_x = round(randomNormal()*MOVEMENTSCALE*(1/DELTASPACE));
-	int move_y = round(randomNormal()*MOVEMENTSCALE*(1/DELTASPACE));
+
+void moveIndividual(int i){ //TODO: Try using modulo here
+	void * r = random_new(time(NULL));
+	int move_x = round(random_normal(r, 0, MOVEMENTSCALE/DELTASPACE));
+	int move_y = round(random_normal(r, 0, MOVEMENTSCALE/DELTASPACE));
 	individuals_new[i].xpos = ((individuals_old[i].xpos + move_x + XMAX -1) % XMAX)+1;
 	individuals_new[i].ypos = ((individuals_old[i].ypos + move_y + YMAX -1) % YMAX)+1;
 }
-/**
- * Creates two independent random standard normal variables
- */
-double randomNormal(void){
-	double uni1 = 1-2*genrand64_real2();
-	double uni2 = 1-2*genrand64_real2();
-	double s = uni1*uni1 + uni2*uni2;
-	while (s >= 1){
-		uni1 = 1-2*genrand64_real2();
-		uni2 = 1-2*genrand64_real2();
-		s = uni1*uni1 + uni2*uni2;
-	}
-	double random_normal = uni1*sqrt(-2*log(s)/s);
-	//double random_normal2 = x2*sqrt(-2*log(s)/s); //TODO: This outputs a second independent random normal, would be better to use this each time
-	return random_normal; //
-}
+
 /**
  * Calculates the birth rate of the input individual.
  * i: The individual whose birth rate is calculated.
@@ -485,12 +494,12 @@ void countPhenotypes(void){
 
 /**
  * Checks whether the population size is not out of bounds.
- * Stops run and throws error when population size is above MAXSIZE or below 0.
+ * Stops run and throws error when population size is above MAXPOPULATIONSIZE or below 0.
  * Stops run and prints message when population size is 0 i.e. population died out.
  */
 void checkPopulationSize(int t){
-	if ((population_size_new > MAXSIZE) || population_size_new < 0){
-		printf("\nERROR: Population size must be between 0 and %d, but population size for next timestep (t = %d) is %d.\n", MAXSIZE, t+1, population_size_new);
+	if ((population_size_new > MAXPOPULATIONSIZE) || population_size_new < 0){
+		printf("\nERROR: Population size must be between 0 and %d, but population size for next timestep (t = %d) is %d.\n", MAXPOPULATIONSIZE, t+1, population_size_new);
 		exit(1);
 	}
 	else if (population_size_new == 0){
@@ -505,7 +514,7 @@ void checkPopulationSize(int t){
 void updateStates(){
 	individuals_old_ptr = &individuals_old; //Make pointers to pointers, this is necessary to swap old and new individuals
 	individuals_new_ptr = &individuals_new;
-	memset(individuals_old, 0, MAXSIZE * sizeof(*individuals_old)); //Delete the old individuals, i.e. set array to 0
+	memset(individuals_old, 0, MAXPOPULATIONSIZE * sizeof(*individuals_old)); //Delete the old individuals, i.e. set array to 0
 	struct Individual* temp = *individuals_old_ptr; //Make a temp ptr that points to the old individuals, now filled with 0s
 	*individuals_old_ptr = *individuals_new_ptr; //New individuals become old individuals
 	*individuals_new_ptr = temp; //Reset the new individuals for the next state by pointing to the block with 0s
@@ -576,7 +585,7 @@ void printParametersToFile(FILE *filename){
 	fprintf(filename, "Mean mutation size altruism = %f\n", MEANMUTSIZEALTRUISM);
 	fprintf(filename, "Scale of altruism = %d\n", ALTRUISMSCALE);
 	fprintf(filename, "Scale of competition = %d\n", COMPETITIONSCALE);
-	fprintf(filename, "Scale of movement = %d\n", MOVEMENTSCALE);
+	fprintf(filename, "Scale of movement = %f\n", MOVEMENTSCALE);
 	fprintf(filename, "B0 = %f\n", B0);
 	fprintf(filename, "BMAX = %f\n", BMAX);
 	fprintf(filename, "ALPHA = %f\n", ALPHA);
@@ -644,7 +653,7 @@ void printPopulationSizeToFile(FILE *filename, int timestep){
 		printParametersToFile(filename);
 		fprintf(filename, "Timestep Time Population_size\n");
 	}
-	if(timestep % OUTPUTUNIT == 0){
+	if(timestep % OUTPUTINTERVAL == 0){
 		fprintf(filename, "%d %f %d\n", timestep, timestep*DELTATIME, population_size_old);
 	}
 }
@@ -670,6 +679,75 @@ void printTraitsPerIndividualToFile(void){
 }
 
 /**
+ * Print to file the number of individuals, cumulative altruism level, and experienced altruism per cell.
+ * Calls the printParametersToFile() function.
+ */
+void printPerCellStatistics(FILE *filename, int timestep){
+	if(timestep == 0){
+		printParametersToFile(filename);
+		fprintf(filename, "Timestep Time Position X Y Density Cumulative_altruism Experienced_altruism\n");
+	}
+	if(timestep % OUTPUTINTERVAL == 0){
+		for(int position = 0; position < NPOS; position++){
+			int x = floor(position/XMAX) + 1; //TODO: Maybe make functions to convert from x and y to position and back
+			int y = (position % XMAX) + 1;
+			fprintf(filename, "%d %f %d %d %d %f %f %f\n", timestep, timestep*DELTATIME, position, x, y, creal(density[position]), creal(altruism[position]), creal(normal_altruism_convolution[position]));
+		}
+	}
+}
+
+/**
+ * Prints the experienced altruism per cell for a timestep in a tab-separated matrix that reflects the grid.
+ * Should be called not more than once per timestep. Make sure to call createExperiencedAltruismMatrix() first.
+ */
+void printExperiencedAltruismMatrixToFile(){
+	for(int index = 0; index < NPOS; index++){
+		if(index != 0){
+			if(index % XMAX == 0){
+				fprintf(expaltr_file, "\n");
+			} else {
+				fprintf(expaltr_file, "\t");
+			}
+		}
+		fprintf(expaltr_file, "%f", creal(normal_altruism_convolution[index]));
+	}
+}
+
+/**
+ * Prints the density (number of individuals) per cell for a timestep in a tab-separated matrix that represents the grid.
+ * Should be called not more than once per timestep. Make sure to call createDensityMatrix() first.
+ */
+void printDensityMatrixToFile(){
+	for(int index = 0; index < NPOS; index++){
+		if(index != 0){
+			if(index % XMAX == 0){
+				fprintf(density_file, "\n");
+			} else {
+				fprintf(density_file, "\t");
+			}
+		}
+		fprintf(density_file, "%f", creal(density[index]));
+	}
+}
+
+/**
+ * Prints the summed altruism levels of the individuals per cell for a timestep in a tab-separated matrix that reflects the grid.
+ * Should be called not more than once per timestep. Make sure to call createExperiencedAltruismMatrix() first, because this calls fillAltruismMatrix().
+ */
+void printSummedAltruismMatrixToFile(){
+	for(int index = 0; index < NPOS; index++){
+		if(index != 0){
+			if(index % XMAX == 0){
+				fprintf(sumaltr_file, "\n");
+			} else {
+				fprintf(sumaltr_file, "\t");
+			}
+		}
+		fprintf(sumaltr_file, "%f", creal(altruism[index]));
+	}
+}
+
+/**
  * Print the sum of the matrix before and after convolution with the normal kernel.
  */
 void printSummedMatrixToFile(FILE *filename, int timestep){
@@ -677,7 +755,7 @@ void printSummedMatrixToFile(FILE *filename, int timestep){
 		printParametersToFile(filename);
 		fprintf(filename, "Timestep Time sum_density sum_convolution_density sum_altruism sum_convolution_altruism\n");
 	}
-	if(timestep % OUTPUTUNIT == 0){
+	if(timestep % OUTPUTINTERVAL == 0){
 		fprintf(filename, "%d %f %f %f %f %f\n", timestep, timestep*DELTATIME, sumMatrix(density), sumMatrix(normal_density_convolution), sumMatrix(altruism), sumMatrix(normal_altruism_convolution));
 	}
 }
@@ -688,8 +766,8 @@ void printSummedMatrixToFile(FILE *filename, int timestep){
 double sumMatrix(fftw_complex* matrix){
 	double sum = 0.0;
 	for(int index = 0; index < NPOS; index++){
-		if(cimag(matrix[index]) != 0){
-			printf("Warning: sumMatrix() is used to sum real parts of fftw_complex object, but not all imaginary parts are 0.");
+		if(cimag(matrix[index]) < -THRESHOLD || cimag(matrix[index]) > THRESHOLD){
+			printf("\nWarning: sumMatrix() is used to sum real parts of fftw_complex object, but not all imaginary parts are 0.");
 		}
 		sum += creal(matrix[index]);
 	}
