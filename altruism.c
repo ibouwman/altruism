@@ -55,7 +55,7 @@ double sumMatrix(fftw_complex*);
 #define OUTPUTINTERVAL 500 //Number of timesteps between each output print
 #define FIELDS 7 //Number of fields to take into account (in each direction) when creating the normal kernel
 #define DELTATIME 0.08 //Multiply rate by DELTATIME to get probability per timestep
-#define DELTASPACE 1.0 //Size of a position. This equals 1/resolution in the Fortran code.
+#define DELTASPACE 0.1 //Size of a position. This equals 1/resolution in the Fortran code.
 #define STEADYSTATEDENSITY (1 - DEATHRATE/BIRTHRATE) * K
 #define GRIDSIZE (XMAX * DELTASPACE) * (YMAX * DELTASPACE)
 #define INITIALALTRUISM 0.0
@@ -278,8 +278,8 @@ void createNormalKernel(int scale, fftw_complex* normal_kernel2D){
  */
 void makeIndividuals(){
 	for (int i = 0; i < INITIALPOPULATIONSIZE; i++){
-		individuals_old[i].xpos = rand() % XMAX+1;;
-		individuals_old[i].ypos = rand() % YMAX+1;
+		individuals_old[i].xpos = (rand() % XMAX)+1; //Add 1 so individuals can't have position 0
+		individuals_old[i].ypos = (rand() % YMAX)+1;
 		individuals_old[i].altruism = INITIALALTRUISM;
 	}
 }
