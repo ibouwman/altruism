@@ -6,7 +6,7 @@
  */
 
 //Include
-# include <stdint.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -15,8 +15,6 @@
 #include "mt64.h"
 #include <complex.h>
 #include <fftw3.h>
-#include "ziggurat.h"
-#include "random.h"
 # include "ziggurat_inline.h"
 
 //Declare functions (in order of usage)
@@ -126,8 +124,6 @@ struct Individual** individuals_old_ptr;
 struct Individual** individuals_new_ptr;
 
 int INITIALPOPULATIONSIZE = round(STEADYSTATEDENSITY * GRIDSIZE); //Initial and maximal population size depend on steady state density and grid size.
-int INITIALA = round(STEADYSTATEDENSITY * GRIDSIZE);
-int INITIALB = 0;
 int MAXPOPULATIONSIZE = round(1.5 * K * GRIDSIZE); //Note that MAXPOPULATIONSIZE can be larger than NPOS because multiple individuals are allowed at the same position.
 int newborns;
 int deaths;
@@ -200,7 +196,7 @@ int main() {
         	density_file = fopen(filename_density, "w+");
         	printExperiencedAltruismMatrixToFile();
         	printDensityMatrixToFile();
-        	printSummedAltruismMatrixToFile();*/
+        	printSummedAltruismMatrixToFile();
     	}
 		for (int i = 0; i < population_size_old; i++){
 			i_new = i + newborns - deaths; //The index of i in the new timestep, taking into account births and deaths of the current timestep
@@ -314,12 +310,7 @@ void makeIndividuals(){
 		individuals_old[i].ypos = ceil(random_y * YMAX);
 		individuals_old[i].altruism = INITIALALTRUISM;
 		individuals_old[i].p = INITIALP;
-	}
-	for (int i = 0; i < INITIALA; i++){
-		individuals_old[i].phenotype = 1;
-	}
-	for (int i = INITIALA; i < INITIALPOPULATIONSIZE; i++){ //Put Bs after As so nothing is overwritten (Bs = Population size - As)
-		individuals_old[i].phenotype = 0;
+		individuals_old[i].phenotype = 1; //Initially, all individuals are A
 	}
 }
 
@@ -597,8 +588,6 @@ void printParametersToFile(FILE *filename){
 	fprintf(filename, "Tmax = %d\n", TMAX);
 	fprintf(filename, "DeltaTime = %f\n", DELTATIME);
 	fprintf(filename, "DeltaSpace = %f\n", DELTASPACE);
-	fprintf(filename, "Initial As = %d\n", INITIALA);
-	fprintf(filename, "Initial Bs = %d\n", INITIALB);
 	fprintf(filename, "Initial population size = %d\n", INITIALPOPULATIONSIZE);
 	fprintf(filename, "Number of positions = %d\n", NPOS);
 	fprintf(filename, "Initial altruism level = %f\n", INITIALALTRUISM);
