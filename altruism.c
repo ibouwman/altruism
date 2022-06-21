@@ -222,7 +222,7 @@ int main() {
    }
    destroyFFTWplans();
    freeMemory();
-   printf("\nDone.\n");
+   printf("\nDone! Finished at %s\n", ctime(&tm));
    return 0;
 }
 
