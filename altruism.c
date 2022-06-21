@@ -17,6 +17,7 @@
 #include <fftw3.h>
 #include "ziggurat.h"
 #include "random.h"
+# include "ziggurat_inline.h"
 
 //Declare functions (in order of usage)
 //Functions used in main():
@@ -31,6 +32,7 @@ void fillDensityMatrix(void);
 void createExperiencedAltruismMatrix(void);
 void fillAltruismMatrix(void);
 void moveIndividual(int);
+unsigned int positiveModulo(int);
 double calculateBirthRate(int);
 void reproduceIndividual(int);
 double considerMutation(double, double);
@@ -55,13 +57,13 @@ double sumMatrix(fftw_complex*);
 
 //Define parameters and settings, following 2D/parameters in the Fortran code (and Table 1 of the paper)
 //Settings
-#define TMAX 101
-#define OUTPUTINTERVAL 50 //Number of timesteps between each output print
+#define TMAX 8001
+#define OUTPUTINTERVAL 500 //Number of timesteps between each output print
 #define FIELDS 7 //Number of fields to take into account (in each direction) when creating the normal kernel
 #define DELTATIME 0.08 //Multiply rate by DELTATIME to get probability per timestep
-#define DELTASPACE 1.0 //Size of a position. This equals 1/resolution in the Fortran code.
+#define DELTASPACE 0.1 //Size of a position. This equals 1/resolution in the Fortran code.
 #define STEADYSTATEDENSITY (1 - DEATHRATE/BIRTHRATE) * K
-#define GRIDSIZE (XMAX * DELTASPACE) * (YMAX * DELTASPACE)
+#define GRIDSIZE (XMAX * DELTASPACE) * (YMAX * DELTASPACE) //Actual size of the grid, not in terms of DELTASPACE
 #define INITIALALTRUISM 0.0
 #define INITIALP 0.5
 #define THRESHOLD 0.0000000001 //Numbers lower than this are set to 0
@@ -142,14 +144,19 @@ char filename_experienced_altruism[50];
 char filename_summed_altruism[50];
 char filename_density[50];
 char filename_traits[50];
+char run_id[] = "testid"; //Give your run a unique id to prevent overwriting of output files
 
 //Main
 int main() {
 	time_t tm;
 	time(&tm);
 	printf("Running %s phenotypic-differentiation branch. Started at %s\n", __FILE__, ctime(&tm));
-	srand(time(0));
-	init_genrand64(time(0));
+	init_genrand64(1); //Use time(0) for different numbers every run (not reproducible!)
+	uint32_t jsr_value = 123456789; //Values taken from ziggurat_inline_test.c (available online)
+	uint32_t jcong_value = 234567891;
+	uint32_t w_value = 345678912;
+	uint32_t z_value = 456789123;
+	zigset(jsr_value, jcong_value, w_value, z_value);
 	allocateMemory();
 	createFFTWplans();
 	printf("Creating kernels...\n");
@@ -165,7 +172,7 @@ int main() {
 	//outputfile = fopen("filename.txt", "w+");
     for (int t = 0; t < TMAX; t++) {
     	if(t == 0){
-    		printf("Simulation has started!\nProgress (printed every %d timesteps):\n", OUTPUTINTERVAL);
+    		printf("Simulation has started!\nProgress (printed every 5 timesteps):\n");
     	}
     	countPhenotypes();
     	if((A_counter + B_counter) != population_size_old){
@@ -178,16 +185,18 @@ int main() {
 		deaths = 0;
     	createLocalDensityMatrix();
     	createExperiencedAltruismMatrix();
+    	if(t % 5 == 0){
+    		printf("%d out of %d timesteps.\n", t, TMAX);
+    	}
     	if(t % OUTPUTINTERVAL == 0){
     		sprintf(filename_traits, "traits_t%d.txt", t);
     		traits_file = fopen(filename_traits, "w+");
     		printTraitsPerIndividualToFile();
-    		printf("%d out of %d timesteps.\n", t, TMAX);
-        	/*sprintf(filename_experienced_altruism, "expaltr_t%d.txt", t);
+        	sprintf(filename_experienced_altruism, "%s_expaltr_t%d.txt", run_id, t);
         	expaltr_file = fopen(filename_experienced_altruism, "w+");
-        	sprintf(filename_summed_altruism, "sumaltr_t%d.txt", t);
+        	sprintf(filename_summed_altruism, "%s_sumaltr_t%d.txt", run_id, t);
         	sumaltr_file = fopen(filename_summed_altruism, "w+");
-        	sprintf(filename_density, "density_t%d.txt", t);
+        	sprintf(filename_density, "%s_density_t%d.txt", run_id, t);
         	density_file = fopen(filename_density, "w+");
         	printExperiencedAltruismMatrixToFile();
         	printDensityMatrixToFile();
@@ -200,14 +209,14 @@ int main() {
 				deaths += 1;
 			}
 			else{ //If individual doesn't die...
-				//moveIndividual(i); //...Move it
+				moveIndividual(i); //...Move it
 				individuals_new[i_new] = individuals_old[i];
 				population_size_new += 1; //...And add it to the population size of the new state.
 				double birth_rate = calculateBirthRate(i);
 				if (probabilityOfEvent < DEATHRATE*DELTATIME + birth_rate*DELTATIME){ //If the individual reproduces...
 					reproduceIndividual(i); //...Create the child
 					population_size_new += 1; //...And add it to the population size of the next timestep
-					//moveIndividual(i_new + 1); //Move the child: Index of child = index of parent in the new state + 1
+					moveIndividual(i_new + 1); //Move the child: Index of child = index of parent in the new state + 1
 					newborns += 1;
 				}
 			}
@@ -299,9 +308,11 @@ void createNormalKernel(int scale, fftw_complex* normal_kernel2D){
  */
 void makeIndividuals(){
 	for (int i = 0; i < INITIALPOPULATIONSIZE; i++){
-		individuals_old[i].xpos = rand() % XMAX+1;;
-		individuals_old[i].ypos = rand() % YMAX+1;
-		individuals_old[i].altruism = genrand64_real2(); //INITIALALTRUISM;
+		double random_x = genrand64_real2();
+		individuals_old[i].xpos = ceil(random_x * XMAX); //ceil so individuals can't have position 0
+		double random_y = genrand64_real2();
+		individuals_old[i].ypos = ceil(random_y * YMAX);
+		individuals_old[i].altruism = INITIALALTRUISM;
 		individuals_old[i].p = INITIALP;
 	}
 	for (int i = 0; i < INITIALA; i++){
@@ -393,13 +404,26 @@ void fillAltruismMatrix(){
  * Assigns a new position in the field to the input individual.
  * i: The individual to move.
  */
+void moveIndividual(int i){ //TODO: Look into more efficient method: only use modulo operation if new position is out of bounds?
+	float normal_x = r4_nor_value();
+	float normal_y = r4_nor_value();
+	int move_x = round((MOVEMENTSCALE/DELTASPACE) * normal_x);
+	int move_y = round((MOVEMENTSCALE/DELTASPACE) * normal_y);
+	individuals_new[i].xpos = positiveModulo((individuals_old[i].xpos + move_x - 1)) + 1;
+	individuals_new[i].ypos = positiveModulo((individuals_old[i].ypos + move_y - 1)) + 1;
+}
 
-void moveIndividual(int i){ //TODO: Try using modulo here
-	void * r = random_new(time(NULL));
-	int move_x = round(random_normal(r, 0, MOVEMENTSCALE/DELTASPACE));
-	int move_y = round(random_normal(r, 0, MOVEMENTSCALE/DELTASPACE));
-	individuals_new[i].xpos = ((individuals_old[i].xpos + move_x + XMAX -1) % XMAX)+1;
-	individuals_new[i].ypos = ((individuals_old[i].ypos + move_y + YMAX -1) % YMAX)+1;
+/**
+ * Calculates an always positive modulo with divisor XMAX. Note that XMAX = YMAX so the function can also be used for movement in the y direction.
+ * dividend: The dividend of the modulo operation.
+ * returns: dividend % XMAX, where the result is always positive.
+ */
+unsigned int positiveModulo(int dividend){
+	int modulo = dividend % XMAX;
+	if(modulo < 0){
+		modulo += XMAX;
+	}
+	return modulo;
 }
 
 /**
