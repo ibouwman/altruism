@@ -32,6 +32,7 @@ void fillDensityMatrix(void);
 void createExperiencedAltruismMatrix(void);
 void fillAltruismMatrix(void);
 void moveIndividual(int);
+unsigned int positiveModulo(int);
 double calculateBirthRate(int);
 void reproduceIndividual(int);
 double randomExponential(void);
@@ -73,7 +74,7 @@ double sumMatrix(fftw_complex*);
 #define K 40 //Carrying capacity
 #define B0 1.0 //Basal benefit of altruism
 #define BMAX 5.0 //Maximum benefit of altruism
-#define XMAX 100 //512 //2**9
+#define XMAX 512 //2**9
 #define YMAX XMAX //The arena must be a square; XMAX and YMAX are used for code readability
 #define NPOS XMAX * YMAX
 
@@ -126,6 +127,7 @@ FILE *sumaltr_file;
 char filename_experienced_altruism[50];
 char filename_summed_altruism[50];
 char filename_density[50];
+char run_id[] = "testid"; //Give your run a unique id to prevent overwriting of output files
 
 //Main
 int main() {
@@ -165,11 +167,11 @@ int main() {
     		printf("%d out of %d timesteps.\n", t, TMAX);
     	}
     	if(t % OUTPUTINTERVAL == 0){
-        	sprintf(filename_experienced_altruism, "220616expaltr_t%d.txt", t);
+        	sprintf(filename_experienced_altruism, "%s_expaltr_t%d.txt", run_id, t);
         	expaltr_file = fopen(filename_experienced_altruism, "w+");
-        	sprintf(filename_summed_altruism, "220616sumaltr_t%d.txt", t);
+        	sprintf(filename_summed_altruism, "%s_sumaltr_t%d.txt", run_id, t);
         	sumaltr_file = fopen(filename_summed_altruism, "w+");
-        	sprintf(filename_density, "220616density_t%d.txt", t);
+        	sprintf(filename_density, "%s_density_t%d.txt", run_id, t);
         	density_file = fopen(filename_density, "w+");
         	printExperiencedAltruismMatrixToFile();
         	printDensityMatrixToFile();
@@ -372,13 +374,26 @@ void fillAltruismMatrix(){
  * Assigns a new position in the field to the input individual.
  * i: The individual to move.
  */
-void moveIndividual(int i){
+void moveIndividual(int i){ //TODO: Look into more efficient method: only use modulo operation if new position is out of bounds?
 	float normal_x = r4_nor_value();
 	float normal_y = r4_nor_value();
 	int move_x = round((MOVEMENTSCALE/DELTASPACE) * normal_x);
 	int move_y = round((MOVEMENTSCALE/DELTASPACE) * normal_y);
-	individuals_new[i].xpos = ((individuals_old[i].xpos + move_x + XMAX -1) % XMAX)+1;
-	individuals_new[i].ypos = ((individuals_old[i].ypos + move_y + YMAX -1) % YMAX)+1;
+	individuals_new[i].xpos = positiveModulo((individuals_old[i].xpos + move_x - 1)) + 1;
+	individuals_new[i].ypos = positiveModulo((individuals_old[i].ypos + move_y - 1)) + 1;
+}
+
+/**
+ * Calculates an always positive modulo with divisor XMAX. Note that XMAX = YMAX so the function can also be used for movement in the y direction.
+ * dividend: The dividend of the modulo operation.
+ * returns: dividend % XMAX, where the result is always positive.
+ */
+unsigned int positiveModulo(int dividend){
+	int modulo = dividend % XMAX;
+	if(modulo < 0){
+		modulo += XMAX;
+	}
+	return modulo;
 }
 
 /**
@@ -608,7 +623,7 @@ void printDensityMatrixToFile(){
 				fprintf(density_file, "\t");
 			}
 		}
-		fprintf(density_file, "%d", (int)creal(density[index]));
+		fprintf(density_file, "%f", creal(density[index]));
 	}
 }
 
