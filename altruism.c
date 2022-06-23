@@ -320,7 +320,7 @@ void createLocalDensityMatrix(){
 void fillDensityMatrix(){
 	int sum_counter = 0;
 	for (int i = 0; i < population_size_old; i++){
-		int position_of_individual = individuals_old[i].xpos * XMAX + individuals_old[i].ypos;
+		int position_of_individual = (individuals_old[i].xpos - 1) * XMAX + (individuals_old[i].ypos - 1);
 		density[position_of_individual] += 1;
 		sum_counter += 1;
 	}
@@ -351,7 +351,7 @@ void createExperiencedAltruismMatrix(){
  */
 void fillAltruismMatrix(){
 	for (int i = 0; i < population_size_old; i++){
-		int position_of_individual = individuals_old[i].xpos * XMAX + individuals_old[i].ypos;
+		int position_of_individual = (individuals_old[i].xpos - 1) * XMAX + (individuals_old[i].ypos - 1);
 		altruism[position_of_individual] += individuals_old[i].altruism;
 	}
 }
@@ -388,7 +388,7 @@ unsigned int positiveModulo(int dividend){
  * returns: The birth rate of the individual.
  */
 double calculateBirthRate(int i){
-	int position = individuals_old[i].xpos * XMAX + individuals_old[i].ypos; //Convert x and y coordinates of individual to find corresponding position in fftw_complex object
+	int position = (individuals_old[i].xpos - 1) * XMAX + (individuals_old[i].ypos - 1); //Convert x and y coordinates of individual to find corresponding position in fftw_complex object
 	double local_density = normal_density_convolution[position];
 	double experienced_altruism = normal_altruism_convolution[position];
 	double benefit = (BMAX * experienced_altruism)/((BMAX/B0) + experienced_altruism);
@@ -572,9 +572,7 @@ void printPerCellStatistics(FILE *filename, int timestep){
 	}
 	if(timestep % OUTPUTINTERVAL == 0){
 		for(int position = 0; position < NPOS; position++){
-			int x = floor(position/XMAX) + 1; //TODO: Maybe make functions to convert from x and y to position and back
-			int y = (position % XMAX) + 1;
-			fprintf(filename, "%d %f %d %d %d %f %f %f\n", timestep, timestep*DELTATIME, position, x, y, creal(density[position]), creal(altruism[position]), creal(normal_altruism_convolution[position]));
+			fprintf(filename, "%d %f %d %f %f %f\n", timestep, timestep*DELTATIME, position, creal(density[position]), creal(altruism[position]), creal(normal_altruism_convolution[position]));
 		}
 	}
 }
