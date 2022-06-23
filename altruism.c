@@ -314,20 +314,11 @@ void createLocalDensityMatrix(){
  * //TODO: Largely the same as fillAltruismMatrix(), it's probably more elegant to make one function for both
  */
 void fillDensityMatrix(){
-	int position = 0;
 	int sum_counter = 0;
-	for (int x = 1; x < XMAX+1; x++){ //Add 1 to let x and y correspond to actual x and y positions of the individuals
-		for (int y = 1; y < YMAX+1; y++){
-			int counter = 0;
-			for (int index = 0; index < population_size_old; index++){
-				if (individuals_old[index].xpos == x & individuals_old[index].ypos == y){
-					counter += 1;
-					sum_counter += 1;
-				}
-			}
-			density[position] = creal(counter);
-			position += 1;
-		}
+	for (int i = 0; i < population_size_old; i++){
+		int position_of_individual = individuals_old[i].xpos * XMAX + individuals_old[i].ypos;
+		density[position_of_individual] += 1;
+		sum_counter += 1;
 	}
 	if(sum_counter != population_size_old){
 		printf("Problem: number of individuals in density matrix (%d) doesn't match population size (%d)!\n", sum_counter, population_size_old); //TODO: This can be removed after all required tests are successful
