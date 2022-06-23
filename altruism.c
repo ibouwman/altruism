@@ -127,10 +127,11 @@ FILE *sumaltr_file;
 char filename_experienced_altruism[50];
 char filename_summed_altruism[50];
 char filename_density[50];
-char run_id[] = "testid"; //Give your run a unique id to prevent overwriting of output files
+char run_id[] = "testid2"; //Give your run a unique id to prevent overwriting of output files
 
 //Main
 int main() {
+	clock_t start = clock();
 	time_t tm;
 	time(&tm);
 	printf("Running %s main branch. Started at %s\n", __FILE__, ctime(&tm));
@@ -203,7 +204,10 @@ int main() {
    }
    destroyFFTWplans();
    freeMemory();
-   printf("\nDone.\n");
+   clock_t end = clock();
+   printf("The end\t%f\n", (double)(end/CLOCKS_PER_SEC));
+   double runtime = (double)((end - start)/CLOCKS_PER_SEC);
+   printf("\nDone! Run took %f seconds.\n", runtime);
    return 0;
 }
 
@@ -346,18 +350,9 @@ void createExperiencedAltruismMatrix(){
  * Similar to the creation of the density matrix.
  */
 void fillAltruismMatrix(){
-	int position = 0;
-	for (int x = 1; x < XMAX+1; x++){
-		for (int y = 1; y < YMAX+1; y++){
-			double cumulative_altruism = 0.0;
-			for (int index = 0; index < population_size_old; index++){
-				if (individuals_old[index].xpos == x & individuals_old[index].ypos == y){
-					cumulative_altruism += individuals_old[index].altruism;
-				}
-			}
-			altruism[position] = creal(cumulative_altruism);
-			position += 1;
-		}
+	for (int i = 0; i < population_size_old; i++){
+		int position_of_individual = individuals_old[i].xpos * XMAX + individuals_old[i].ypos;
+		altruism[position_of_individual] += individuals_old[i].altruism;
 	}
 }
 
