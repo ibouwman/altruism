@@ -119,6 +119,7 @@ int MAXPOPULATIONSIZE = round(1.5 * K * GRIDSIZE); //Note that MAXPOPULATIONSIZE
 int newborns;
 int deaths;
 int i_new;
+int counter;
 
 //Output files with the input matrices for Mathematica
 FILE *expaltr_file;
@@ -127,7 +128,7 @@ FILE *sumaltr_file;
 char filename_experienced_altruism[50];
 char filename_summed_altruism[50];
 char filename_density[50];
-char run_id[] = "testid2"; //Give your run a unique id to prevent overwriting of output files
+char run_id[] = "24512"; //Give your run a unique id to prevent overwriting of output files
 
 //Main
 int main() {
@@ -152,6 +153,7 @@ int main() {
 	makeIndividuals();
 	population_size_old = INITIALPOPULATIONSIZE;
 	population_size_new = 0;
+	counter = 1; //Counter for file naming
 	//FILE *outputfile;
 	//outputfile = fopen("filename.txt", "w+");
     for (int t = 0; t < TMAX; t++) {
@@ -168,12 +170,13 @@ int main() {
     		printf("%d out of %d timesteps.\n", t, TMAX);
     	}
     	if(t % OUTPUTINTERVAL == 0){
-        	sprintf(filename_experienced_altruism, "%s_expaltr_t%d.txt", run_id, t);
+        	sprintf(filename_experienced_altruism, "%s_expaltr_%04d.txt", run_id, counter);
         	expaltr_file = fopen(filename_experienced_altruism, "w+");
-        	sprintf(filename_summed_altruism, "%s_sumaltr_t%d.txt", run_id, t);
+        	sprintf(filename_summed_altruism, "%s_sumaltr_%04d.txt", run_id, counter);
         	sumaltr_file = fopen(filename_summed_altruism, "w+");
-        	sprintf(filename_density, "%s_density_t%d.txt", run_id, t);
+        	sprintf(filename_density, "%s_density_%04d.txt", run_id, counter);
         	density_file = fopen(filename_density, "w+");
+        	counter++;
         	printExperiencedAltruismMatrixToFile();
         	printDensityMatrixToFile();
         	printSummedAltruismMatrixToFile();
