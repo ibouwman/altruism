@@ -41,6 +41,7 @@ void updateStates(void);
 void destroyFFTWplans(void);
 void freeMemory(void);
 //Functions used to create output files:
+void printRunInfoToFile(FILE*, int);
 void printParametersToFile(FILE*);
 void printMeanAltruismToFile(FILE*, int);
 void printPopulationSizeToFile(FILE*, int);
@@ -59,7 +60,7 @@ double sumMatrix(fftw_complex*);
 #define DELTATIME 0.08 //Multiply rate by DELTATIME to get probability per timestep
 #define DELTASPACE 0.1 //Size of a position. This equals 1/resolution in the Fortran code.
 #define STEADYSTATEDENSITY (1 - DEATHRATE/BIRTHRATE) * K
-#define GRIDSIZE (XMAX * DELTASPACE) * (YMAX * DELTASPACE) //Actual size of the grid, not in terms of DELTASPACE
+#define GRIDSIZE (N * DELTASPACE) * (N * DELTASPACE) //Actual size of the grid, not in terms of DELTASPACE
 #define INITIALALTRUISM 0.0
 #define THRESHOLD 0.0000000001 //Numbers lower than this are set to 0
 //Parameters
@@ -74,9 +75,8 @@ double sumMatrix(fftw_complex*);
 #define K 40 //Carrying capacity
 #define B0 1.0 //Basal benefit of altruism
 #define BMAX 5.0 //Maximum benefit of altruism
-#define XMAX 1024 //2**9 TODO: Replace XMAX and YMAX by one parameter since they must be the same
-#define YMAX XMAX //The arena must be a square; XMAX and YMAX are used for code readability
-#define NPOS XMAX * YMAX
+#define N 1024 //2**9
+#define NPOS N * N
 
 //Declare structures
 struct Individual {
@@ -127,8 +127,7 @@ FILE *sumaltr_file;
 char filename_experienced_altruism[50];
 char filename_summed_altruism[50];
 char filename_density[50];
-char filename_meanaltruism[50];
-char filename_popsize[50];
+char filename_runinfo[50];
 char run_id[] = "01024"; //Give your run a unique id to prevent overwriting of output files
 
 //Main
@@ -155,18 +154,14 @@ int main() {
 	population_size_old = INITIALPOPULATIONSIZE;
 	population_size_new = 0;
 	counter = 1; //Counter for file naming
-	FILE *meanaltruism_file;
-	sprintf(filename_meanaltruism, "%s_meanaltruism.txt", run_id);
-	meanaltruism_file = fopen(filename_meanaltruism, "w+");
-	FILE *popsize_file;
-	sprintf(filename_popsize, "%s_popsize.txt", run_id);
-	popsize_file = fopen("filename.txt", "w+");
+	FILE *runinfo_file;
+	sprintf(filename_runinfo, "%s_runinfo.txt", run_id);
+	runinfo_file = fopen(filename_runinfo, "w+");
     for (int t = 0; t < TMAX; t++) {
     	if(t == 0){
     		printf("Simulation has started!\nProgress (printed every 5 timesteps):\n");
     	}
-    	printMeanAltruismToFile(meanaltruism_file, t);
-    	printPopulationSizeToFile(popsize_file, t);
+    	printRunInfoToFile(runinfo_file, t);
     	newborns = 0;
 		deaths = 0;
     	createLocalDensityMatrix();
@@ -218,7 +213,6 @@ int main() {
    destroyFFTWplans();
    freeMemory();
    clock_t end = clock();
-   printf("The end\t%f\n", (double)(end/CLOCKS_PER_SEC));
    double runtime = (double)((end - start)/CLOCKS_PER_SEC);
    printf("\nDone! Run took %f seconds.\n", runtime);
    return 0;
@@ -256,12 +250,12 @@ void allocateMemory(void){
  * Creates plans for the Fourier transformations used in the code.
  */
 void createFFTWplans(void){
-	fftw_plan_normal_for_density_forward = fftw_plan_dft_2d(XMAX, YMAX, normal_for_density, normal_for_density_forward, FFTW_FORWARD, FFTW_MEASURE);
-	fftw_plan_normal_for_altruism_forward = fftw_plan_dft_2d(XMAX, YMAX, normal_for_altruism, normal_for_altruism_forward, FFTW_FORWARD, FFTW_MEASURE);
-	fftw_plan_density_forward = fftw_plan_dft_2d(XMAX, YMAX, density, density_forward, FFTW_FORWARD, FFTW_MEASURE);
-	fftw_plan_normal_density_convolution = fftw_plan_dft_2d(XMAX, YMAX, normal_forward_density_forward_product, normal_density_convolution, FFTW_BACKWARD, FFTW_MEASURE);
-	fftw_plan_altruism_forward = fftw_plan_dft_2d(XMAX, YMAX, altruism, altruism_forward, FFTW_FORWARD, FFTW_MEASURE);
-	fftw_plan_normal_altruism_convolution = fftw_plan_dft_2d(XMAX, YMAX, normal_forward_altruism_forward_product, normal_altruism_convolution, FFTW_BACKWARD, FFTW_MEASURE);
+	fftw_plan_normal_for_density_forward = fftw_plan_dft_2d(N, N, normal_for_density, normal_for_density_forward, FFTW_FORWARD, FFTW_MEASURE);
+	fftw_plan_normal_for_altruism_forward = fftw_plan_dft_2d(N, N, normal_for_altruism, normal_for_altruism_forward, FFTW_FORWARD, FFTW_MEASURE);
+	fftw_plan_density_forward = fftw_plan_dft_2d(N, N, density, density_forward, FFTW_FORWARD, FFTW_MEASURE);
+	fftw_plan_normal_density_convolution = fftw_plan_dft_2d(N, N, normal_forward_density_forward_product, normal_density_convolution, FFTW_BACKWARD, FFTW_MEASURE);
+	fftw_plan_altruism_forward = fftw_plan_dft_2d(N, N, altruism, altruism_forward, FFTW_FORWARD, FFTW_MEASURE);
+	fftw_plan_normal_altruism_convolution = fftw_plan_dft_2d(N, N, normal_forward_altruism_forward_product, normal_altruism_convolution, FFTW_BACKWARD, FFTW_MEASURE);
 }
 
 
@@ -270,12 +264,12 @@ void createFFTWplans(void){
  */
 void createNormalKernel(int scale, fftw_complex* normal_kernel2D){
 	fftw_complex* normal_kernel1D;
-	normal_kernel1D = fftw_alloc_complex(XMAX);
+	normal_kernel1D = fftw_alloc_complex(N);
 	double preFactor = 1.0/(2.0*(scale*(1/DELTASPACE))*(scale*(1/DELTASPACE)));
-	for(int x = 0; x < XMAX; x++){
+	for(int x = 0; x < N; x++){
 		double exp_counter = 0.0;
 		for(int field = -FIELDS; field < FIELDS; field++){
-			exp_counter += exp(-preFactor * ((x + field*XMAX)*(x + field*XMAX))); //TODO: Change summation strategy so small numbers don't disappear
+			exp_counter += exp(-preFactor * ((x + field*N)*(x + field*N))); //TODO: Change summation strategy so small numbers don't disappear
 		}
 		if(exp_counter < THRESHOLD){
 			exp_counter = 0;
@@ -284,8 +278,8 @@ void createNormalKernel(int scale, fftw_complex* normal_kernel2D){
 	}
 	int index = 0;
 	double kernel_sum = 0.0;
-	for(int x = 0; x < XMAX; x++){
-		for(int y = 0; y < YMAX; y++){
+	for(int x = 0; x < N; x++){
+		for(int y = 0; y < N; y++){
 			normal_kernel2D[index] = normal_kernel1D[x]*normal_kernel1D[y];
 			kernel_sum += normal_kernel2D[index];
 			index++;
@@ -303,9 +297,9 @@ void createNormalKernel(int scale, fftw_complex* normal_kernel2D){
 void makeIndividuals(){
 	for (int i = 0; i < INITIALPOPULATIONSIZE; i++){
 		double random_x = genrand64_real2();
-		individuals_old[i].xpos = ceil(random_x * XMAX); //ceil so individuals can't have position 0
+		individuals_old[i].xpos = ceil(random_x * N); //ceil so individuals can't have position 0
 		double random_y = genrand64_real2();
-		individuals_old[i].ypos = ceil(random_y * YMAX);
+		individuals_old[i].ypos = ceil(random_y * N);
 		individuals_old[i].altruism = INITIALALTRUISM;
 	}
 }
@@ -333,7 +327,7 @@ void createLocalDensityMatrix(){
 void fillDensityMatrix(){
 	int sum_counter = 0;
 	for (int i = 0; i < population_size_old; i++){
-		int position_of_individual = (individuals_old[i].xpos - 1) * XMAX + (individuals_old[i].ypos - 1);
+		int position_of_individual = (individuals_old[i].xpos - 1) * N + (individuals_old[i].ypos - 1);
 		density[position_of_individual] += 1;
 		sum_counter += 1;
 	}
@@ -364,7 +358,7 @@ void createExperiencedAltruismMatrix(){
  */
 void fillAltruismMatrix(){
 	for (int i = 0; i < population_size_old; i++){
-		int position_of_individual = (individuals_old[i].xpos - 1) * XMAX + (individuals_old[i].ypos - 1);
+		int position_of_individual = (individuals_old[i].xpos - 1) * N + (individuals_old[i].ypos - 1);
 		altruism[position_of_individual] += individuals_old[i].altruism;
 	}
 }
@@ -384,14 +378,14 @@ void moveIndividual(int initial_index, int new_index){ //TODO: Look into more ef
 }
 
 /**
- * Calculates an always positive modulo with divisor XMAX. Note that XMAX = YMAX so the function can also be used for movement in the y direction.
+ * Calculates an always positive modulo with divisor N. Note that N = N so the function can also be used for movement in the y direction.
  * dividend: The dividend of the modulo operation.
- * returns: dividend % XMAX, where the result is always positive.
+ * returns: dividend % N, where the result is always positive.
  */
 unsigned int positiveModulo(int dividend){
-	int modulo = dividend % XMAX;
+	int modulo = dividend % N;
 	if(modulo < 0){
-		modulo += XMAX;
+		modulo += N;
 	}
 	return modulo;
 }
@@ -402,7 +396,7 @@ unsigned int positiveModulo(int dividend){
  * returns: The birth rate of the individual.
  */
 double calculateBirthRate(int i){
-	int position = (individuals_old[i].xpos - 1) * XMAX + (individuals_old[i].ypos - 1); //Convert x and y coordinates of individual to find corresponding position in fftw_complex object
+	int position = (individuals_old[i].xpos - 1) * N + (individuals_old[i].ypos - 1); //Convert x and y coordinates of individual to find corresponding position in fftw_complex object
 	double local_density = normal_density_convolution[position];
 	double experienced_altruism = normal_altruism_convolution[position];
 	double benefit = (BMAX * experienced_altruism)/((BMAX/B0) + experienced_altruism);
@@ -518,7 +512,7 @@ void freeMemory(void){
 /**
  * Generates a file with basic information about the simulation.
  */
-void printRunInfoToFile(FILE *filename){
+void printRunInfoToFile(FILE *filename, int timestep){
 	if(timestep == 0){
 		printParametersToFile(filename);
 		fprintf(filename, "Timestep Time Mean_altruism_level Population_size\n");
@@ -529,7 +523,7 @@ void printRunInfoToFile(FILE *filename){
 			cumulative_altruism += individuals_old[i].altruism;
 		}
 		double mean_altruism = cumulative_altruism/population_size_old;
-		fprintf(filename, "%d %f %f\n", timestep, timestep*DELTATIME, mean_altruism, population_size_old);
+		fprintf(filename, "%d %f %f %d\n", timestep, timestep*DELTATIME, mean_altruism, population_size_old);
 	}
 }
 
@@ -539,7 +533,7 @@ void printRunInfoToFile(FILE *filename){
 void printParametersToFile(FILE *filename){
 	time_t tm;
 	time(&tm);
-	fprintf(filename, "Simulation from %s performed at %s\n", __FILE__, ctime(&tm), run_id);
+	fprintf(filename, "Simulation from %s performed at %s\n", __FILE__, ctime(&tm));
 	fprintf(filename, "Output files are created with run id: %s\n", run_id);
 	fprintf(filename, "Predefined parameters:\n");
 	fprintf(filename, "Tmax = %d\n", TMAX);
@@ -617,7 +611,7 @@ void printPerCellStatistics(FILE *filename, int timestep){
 void printExperiencedAltruismMatrixToFile(){
 	for(int index = 0; index < NPOS; index++){
 		if(index != 0){
-			if(index % XMAX == 0){
+			if(index % N == 0){
 				fprintf(expaltr_file, "\n");
 			} else {
 				fprintf(expaltr_file, "\t");
@@ -634,7 +628,7 @@ void printExperiencedAltruismMatrixToFile(){
 void printDensityMatrixToFile(){
 	for(int index = 0; index < NPOS; index++){
 		if(index != 0){
-			if(index % XMAX == 0){
+			if(index % N == 0){
 				fprintf(density_file, "\n");
 			} else {
 				fprintf(density_file, "\t");
@@ -651,7 +645,7 @@ void printDensityMatrixToFile(){
 void printSummedAltruismMatrixToFile(){
 	for(int index = 0; index < NPOS; index++){
 		if(index != 0){
-			if(index % XMAX == 0){
+			if(index % N == 0){
 				fprintf(sumaltr_file, "\n");
 			} else {
 				fprintf(sumaltr_file, "\t");
