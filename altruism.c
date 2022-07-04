@@ -29,10 +29,10 @@ void createLocalDensityMatrix(void);
 void fillDensityMatrix(void);
 void createExperiencedAltruismMatrix(void);
 void fillAltruismMatrix(void);
-void moveIndividual(int);
+void moveIndividual(int, int);
 unsigned int positiveModulo(int);
 double calculateBirthRate(int);
-void reproduceIndividual(int);
+void reproduceIndividual(int, int);
 double considerMutation(double, double);
 double randomExponential(void);
 void countPhenotypes(void);
@@ -41,6 +41,7 @@ void updateStates(void);
 void destroyFFTWplans(void);
 void freeMemory(void);
 //Functions used to create output files:
+void printRunInfoToFile(FILE*, int);
 void printParametersToFile(FILE*);
 void printMeanAltruismToFile(FILE*, int);
 void printPopulationSizeToFile(FILE*, int);
@@ -55,13 +56,13 @@ double sumMatrix(fftw_complex*);
 
 //Define parameters and settings, following 2D/parameters in the Fortran code (and Table 1 of the paper)
 //Settings
-#define TMAX 8001
-#define OUTPUTINTERVAL 500 //Number of timesteps between each output print
+#define TMAX 100001
+#define OUTPUTINTERVAL 1250 //Number of timesteps between each output print
 #define FIELDS 7 //Number of fields to take into account (in each direction) when creating the normal kernel
 #define DELTATIME 0.08 //Multiply rate by DELTATIME to get probability per timestep
 #define DELTASPACE 0.1 //Size of a position. This equals 1/resolution in the Fortran code.
 #define STEADYSTATEDENSITY (1 - DEATHRATE/BIRTHRATE) * K
-#define GRIDSIZE (XMAX * DELTASPACE) * (YMAX * DELTASPACE) //Actual size of the grid, not in terms of DELTASPACE
+#define GRIDSIZE (N * DELTASPACE) * (N * DELTASPACE) //Actual size of the grid, not in terms of DELTASPACE
 #define INITIALALTRUISM 0.0
 #define INITIALP 0.5
 #define THRESHOLD 0.0000000001 //Numbers lower than this are set to 0
@@ -81,9 +82,8 @@ double sumMatrix(fftw_complex*);
 #define ALPHA 0.25
 #define BETA (1 - ALPHA)*KAPPA
 #define KAPPA 1.0
-#define XMAX 512
-#define YMAX XMAX //The arena must be a square; XMAX and YMAX are used for code readability
-#define NPOS XMAX * YMAX
+#define N 1024 //2**9
+#define NPOS N * N
 
 //Declare structures
 struct Individual {
@@ -127,9 +127,9 @@ int INITIALPOPULATIONSIZE = round(STEADYSTATEDENSITY * GRIDSIZE); //Initial and 
 int MAXPOPULATIONSIZE = round(1.5 * K * GRIDSIZE); //Note that MAXPOPULATIONSIZE can be larger than NPOS because multiple individuals are allowed at the same position.
 int newborns;
 int deaths;
-int i_new;
 int A_counter;
 int B_counter;
+int counter;
 
 //Output files:
 FILE *expaltr_file;
@@ -139,11 +139,12 @@ FILE *traits_file;
 char filename_experienced_altruism[50];
 char filename_summed_altruism[50];
 char filename_density[50];
-char filename_traits[50];
-char run_id[] = "testid"; //Give your run a unique id to prevent overwriting of output files
+char filename_runinfo[50];
+char run_id[] = "01024"; //Give your run a unique id to prevent overwriting of output files
 
 //Main
 int main() {
+	clock_t start = clock();
 	time_t tm;
 	time(&tm);
 	printf("Running %s phenotypic-differentiation branch. Started at %s\n", __FILE__, ctime(&tm));
@@ -164,8 +165,10 @@ int main() {
 	makeIndividuals();
 	population_size_old = INITIALPOPULATIONSIZE;
 	population_size_new = 0;
-	//FILE *outputfile;
-	//outputfile = fopen("filename.txt", "w+");
+	counter = 1; //Counter for file naming
+	FILE *runinfo_file;
+	sprintf(filename_runinfo, "%s_runinfo.txt", run_id);
+	runinfo_file = fopen(filename_runinfo, "w+");
     for (int t = 0; t < TMAX; t++) {
     	if(t == 0){
     		printf("Simulation has started!\nProgress (printed every 5 timesteps):\n");
@@ -175,8 +178,7 @@ int main() {
     		printf("ERROR: The summed number of individuals per phenotype (A: %d, B: %d) doesn't equal the population size (%d)!\n", A_counter, B_counter, population_size_old);
     		exit(1);
     	}
-    	//printMeanAltruismToFile(outputfile, t);
-    	//printPopulationSizeToFile(outputfile, t);
+    	printRunInfoToFile(runinfo_file, t);
     	newborns = 0;
 		deaths = 0;
     	createLocalDensityMatrix();
@@ -188,32 +190,38 @@ int main() {
     		sprintf(filename_traits, "traits_t%d.txt", t);
     		traits_file = fopen(filename_traits, "w+");
     		printTraitsPerIndividualToFile();
-        	sprintf(filename_experienced_altruism, "%s_expaltr_t%d.txt", run_id, t);
+        	sprintf(filename_experienced_altruism, "%s_expaltr_%04d.txt", run_id, counter);
         	expaltr_file = fopen(filename_experienced_altruism, "w+");
-        	sprintf(filename_summed_altruism, "%s_sumaltr_t%d.txt", run_id, t);
+        	sprintf(filename_summed_altruism, "%s_sumaltr_%04d.txt", run_id, counter);
         	sumaltr_file = fopen(filename_summed_altruism, "w+");
-        	sprintf(filename_density, "%s_density_t%d.txt", run_id, t);
+        	sprintf(filename_density, "%s_density_%04d.txt", run_id, counter);
         	density_file = fopen(filename_density, "w+");
+        	counter++;
         	printExperiencedAltruismMatrixToFile();
         	printDensityMatrixToFile();
         	printSummedAltruismMatrixToFile();
     	}
 		for (int i = 0; i < population_size_old; i++){
-			i_new = i + newborns - deaths; //The index of i in the new timestep, taking into account births and deaths of the current timestep
+			int i_new = i + newborns - deaths; //The index of i in the new timestep, taking into account births and deaths the current timestep
 			double probabilityOfEvent = genrand64_real2();
 			if (probabilityOfEvent < DEATHRATE*DELTATIME){ //If individual dies...
 				deaths += 1;
 			}
 			else{ //If individual doesn't die...
-				moveIndividual(i); //...Move it
+				//First: Administration:
 				individuals_new[i_new] = individuals_old[i];
-				population_size_new += 1; //...And add it to the population size of the new state.
-				double birth_rate = calculateBirthRate(i);
+				population_size_new += 1;
+				double birth_rate = calculateBirthRate(i); //TODO: Might as well use individuals_new[i_new] here instead of individuals_old[i]
+				//Now, the individual in individuals_new is exactly the same as it was in individuals_old.
+				//Second: Action:
+				moveIndividual(i, i_new); //...Move it
 				if (probabilityOfEvent < DEATHRATE*DELTATIME + birth_rate*DELTATIME){ //If the individual reproduces...
-					reproduceIndividual(i); //...Create the child
-					population_size_new += 1; //...And add it to the population size of the next timestep
-					moveIndividual(i_new + 1); //Move the child: Index of child = index of parent in the new state + 1
-					newborns += 1;
+					//First: Administration:
+					population_size_new += 1; //Add child to the population size of the next timestep
+					newborns += 1; //Add child to the newborns of this timestep
+					//Second: Action:
+					reproduceIndividual(i, i_new + 1); //...Create the child
+					moveIndividual(i, i_new + 1); //Move the child: Index of child = index of parent in the new state + 1. The initial position of the child is the position of the parent in the old state, hence i.
 				}
 			}
 		}
@@ -222,7 +230,9 @@ int main() {
    }
    destroyFFTWplans();
    freeMemory();
-   printf("\nDone! Finished at %s\n", ctime(&tm));
+   clock_t end = clock();
+   double runtime = (double)((end - start)/CLOCKS_PER_SEC);
+   printf("\nDone! Run took %f seconds.\n", runtime);
    return 0;
 }
 
@@ -258,12 +268,12 @@ void allocateMemory(void){
  * Creates plans for the Fourier transformations used in the code.
  */
 void createFFTWplans(void){
-	fftw_plan_normal_for_density_forward = fftw_plan_dft_2d(XMAX, YMAX, normal_for_density, normal_for_density_forward, FFTW_FORWARD, FFTW_MEASURE);
-	fftw_plan_normal_for_altruism_forward = fftw_plan_dft_2d(XMAX, YMAX, normal_for_altruism, normal_for_altruism_forward, FFTW_FORWARD, FFTW_MEASURE);
-	fftw_plan_density_forward = fftw_plan_dft_2d(XMAX, YMAX, density, density_forward, FFTW_FORWARD, FFTW_MEASURE);
-	fftw_plan_normal_density_convolution = fftw_plan_dft_2d(XMAX, YMAX, normal_forward_density_forward_product, normal_density_convolution, FFTW_BACKWARD, FFTW_MEASURE);
-	fftw_plan_altruism_forward = fftw_plan_dft_2d(XMAX, YMAX, altruism, altruism_forward, FFTW_FORWARD, FFTW_MEASURE);
-	fftw_plan_normal_altruism_convolution = fftw_plan_dft_2d(XMAX, YMAX, normal_forward_altruism_forward_product, normal_altruism_convolution, FFTW_BACKWARD, FFTW_MEASURE);
+	fftw_plan_normal_for_density_forward = fftw_plan_dft_2d(N, N, normal_for_density, normal_for_density_forward, FFTW_FORWARD, FFTW_MEASURE);
+	fftw_plan_normal_for_altruism_forward = fftw_plan_dft_2d(N, N, normal_for_altruism, normal_for_altruism_forward, FFTW_FORWARD, FFTW_MEASURE);
+	fftw_plan_density_forward = fftw_plan_dft_2d(N, N, density, density_forward, FFTW_FORWARD, FFTW_MEASURE);
+	fftw_plan_normal_density_convolution = fftw_plan_dft_2d(N, N, normal_forward_density_forward_product, normal_density_convolution, FFTW_BACKWARD, FFTW_MEASURE);
+	fftw_plan_altruism_forward = fftw_plan_dft_2d(N, N, altruism, altruism_forward, FFTW_FORWARD, FFTW_MEASURE);
+	fftw_plan_normal_altruism_convolution = fftw_plan_dft_2d(N, N, normal_forward_altruism_forward_product, normal_altruism_convolution, FFTW_BACKWARD, FFTW_MEASURE);
 }
 
 
@@ -272,12 +282,12 @@ void createFFTWplans(void){
  */
 void createNormalKernel(int scale, fftw_complex* normal_kernel2D){
 	fftw_complex* normal_kernel1D;
-	normal_kernel1D = fftw_alloc_complex(XMAX);
+	normal_kernel1D = fftw_alloc_complex(N);
 	double preFactor = 1.0/(2.0*(scale*(1/DELTASPACE))*(scale*(1/DELTASPACE)));
-	for(int x = 0; x < XMAX; x++){
+	for(int x = 0; x < N; x++){
 		double exp_counter = 0.0;
 		for(int field = -FIELDS; field < FIELDS; field++){
-			exp_counter += exp(-preFactor * ((x + field*XMAX)*(x + field*XMAX))); //TODO: Change summation strategy so small numbers don't disappear
+			exp_counter += exp(-preFactor * ((x + field*N)*(x + field*N))); //TODO: Change summation strategy so small numbers don't disappear
 		}
 		if(exp_counter < THRESHOLD){
 			exp_counter = 0;
@@ -286,8 +296,8 @@ void createNormalKernel(int scale, fftw_complex* normal_kernel2D){
 	}
 	int index = 0;
 	double kernel_sum = 0.0;
-	for(int x = 0; x < XMAX; x++){
-		for(int y = 0; y < YMAX; y++){
+	for(int x = 0; x < N; x++){
+		for(int y = 0; y < N; y++){
 			normal_kernel2D[index] = normal_kernel1D[x]*normal_kernel1D[y];
 			kernel_sum += normal_kernel2D[index];
 			index++;
@@ -305,9 +315,9 @@ void createNormalKernel(int scale, fftw_complex* normal_kernel2D){
 void makeIndividuals(){
 	for (int i = 0; i < INITIALPOPULATIONSIZE; i++){
 		double random_x = genrand64_real2();
-		individuals_old[i].xpos = ceil(random_x * XMAX); //ceil so individuals can't have position 0
+		individuals_old[i].xpos = ceil(random_x * N); //ceil so individuals can't have position 0
 		double random_y = genrand64_real2();
-		individuals_old[i].ypos = ceil(random_y * YMAX);
+		individuals_old[i].ypos = ceil(random_y * N);
 		individuals_old[i].altruism = INITIALALTRUISM;
 		individuals_old[i].p = INITIALP;
 		individuals_old[i].phenotype = 1; //Initially, all individuals are A
@@ -335,20 +345,11 @@ void createLocalDensityMatrix(){
  * //TODO: Largely the same as fillAltruismMatrix(), it's probably more elegant to make one function for both
  */
 void fillDensityMatrix(){
-	int position = 0;
 	int sum_counter = 0;
-	for (int x = 1; x < XMAX+1; x++){ //Add 1 to let x and y correspond to actual x and y positions of the individuals
-		for (int y = 1; y < YMAX+1; y++){
-			int counter = 0;
-			for (int index = 0; index < population_size_old; index++){
-				if (individuals_old[index].xpos == x & individuals_old[index].ypos == y){
-					counter += 1;
-					sum_counter += 1;
-				}
-			}
-			density[position] = creal(counter);
-			position += 1;
-		}
+	for (int i = 0; i < population_size_old; i++){
+		int position_of_individual = (individuals_old[i].xpos - 1) * N + (individuals_old[i].ypos - 1);
+		density[position_of_individual] += 1;
+		sum_counter += 1;
 	}
 	if(sum_counter != population_size_old){
 		printf("Problem: number of individuals in density matrix (%d) doesn't match population size (%d)!\n", sum_counter, population_size_old); //TODO: This can be removed after all required tests are successful
@@ -376,43 +377,37 @@ void createExperiencedAltruismMatrix(){
  * Similar to the creation of the density matrix.
  */
 void fillAltruismMatrix(){
-	int position = 0;
-	for (int x = 1; x < XMAX+1; x++){
-		for (int y = 1; y < YMAX+1; y++){
-			double cumulative_altruism = 0.0;
-			for (int index = 0; index < population_size_old; index++){
-				if (individuals_old[index].phenotype == 1 & individuals_old[index].xpos == x & individuals_old[index].ypos == y){ //Only the altruism that is expressed counts (phenotype 1)
-					cumulative_altruism += individuals_old[index].altruism;
-				}
-			}
-			altruism[position] = creal(cumulative_altruism); //Note that altruism only includes the expresssed altruism (i.e. the altruism levels of individuals with phenotype 1)
-			position += 1;
+	for (int i = 0; i < population_size_old; i++){
+		if (individuals_old[i].phenotype == 1){
+			int position_of_individual = (individuals_old[i].xpos - 1) * N + (individuals_old[i].ypos - 1);
+			altruism[position_of_individual] += individuals_old[i].altruism;
 		}
 	}
 }
 
 /**
  * Assigns a new position in the field to the input individual.
- * i: The individual to move.
+ * initial_index: The index that indicates the current position of the individual.
+ * new_index: The index that indicates where the new position of the individual should be stored.
  */
-void moveIndividual(int i){ //TODO: Look into more efficient method: only use modulo operation if new position is out of bounds?
+void moveIndividual(int initial_index, int new_index){ //TODO: Look into more efficient method: only use modulo operation if new position is out of bounds?
 	float normal_x = r4_nor_value();
 	float normal_y = r4_nor_value();
 	int move_x = round((MOVEMENTSCALE/DELTASPACE) * normal_x);
 	int move_y = round((MOVEMENTSCALE/DELTASPACE) * normal_y);
-	individuals_new[i].xpos = positiveModulo((individuals_old[i].xpos + move_x - 1)) + 1;
-	individuals_new[i].ypos = positiveModulo((individuals_old[i].ypos + move_y - 1)) + 1;
+	individuals_new[new_index].xpos = positiveModulo((individuals_old[initial_index].xpos + move_x - 1)) + 1;
+	individuals_new[new_index].ypos = positiveModulo((individuals_old[initial_index].ypos + move_y - 1)) + 1;
 }
 
 /**
- * Calculates an always positive modulo with divisor XMAX. Note that XMAX = YMAX so the function can also be used for movement in the y direction.
+ * Calculates an always positive modulo with divisor N. Note that N = N so the function can also be used for movement in the y direction.
  * dividend: The dividend of the modulo operation.
- * returns: dividend % XMAX, where the result is always positive.
+ * returns: dividend % N, where the result is always positive.
  */
 unsigned int positiveModulo(int dividend){
-	int modulo = dividend % XMAX;
+	int modulo = dividend % N;
 	if(modulo < 0){
-		modulo += XMAX;
+		modulo += N;
 	}
 	return modulo;
 }
@@ -423,7 +418,7 @@ unsigned int positiveModulo(int dividend){
  * returns: The birth rate of the individual.
  */
 double calculateBirthRate(int i){
-	int position = individuals_old[i].xpos * XMAX + individuals_old[i].ypos; //Convert x and y coordinates of individual to find corresponding position in fftw_complex object
+	int position = (individuals_old[i].xpos - 1) * N + (individuals_old[i].ypos - 1); //Convert x and y coordinates of individual to find corresponding position in fftw_complex object
 	double local_density = normal_density_convolution[position];
 	double experienced_altruism = normal_altruism_convolution[position];
 	double benefit = (BMAX * experienced_altruism)/((BMAX/B0) + experienced_altruism);
@@ -440,19 +435,19 @@ double calculateBirthRate(int i){
  * Creates a child of individual i at index i+1 in the individuals_new array.
  * i: The parent individual.
  */
-void reproduceIndividual(int i){
-	individuals_new[i_new+1] = individuals_old[i]; //Initially child = parent BUT consider mutation below
-	individuals_new[i_new+1].altruism = considerMutation(individuals_new[i_new+1].altruism, MEANMUTSIZEALTRUISM);
-	individuals_new[i_new+1].p = considerMutation(individuals_new[i_new+1].p, MEANMUTSIZEP);
-	if(individuals_new[i_new+1].p > 1.0){ //Probability cannot become larger than 1
-		individuals_new[i_new+1].p = 1.0;
+void reproduceIndividual(int index_of_parent, int index_of_child){
+	individuals_new[index_of_child] = individuals_old[index_of_parent]; //Initially child = parent BUT consider mutation below
+	individuals_new[index_of_child].altruism = considerMutation(individuals_new[index_of_child].altruism, MEANMUTSIZEALTRUISM);
+	individuals_new[index_of_child].p = considerMutation(individuals_new[index_of_child].p, MEANMUTSIZEP);
+	if(individuals_new[index_of_child].p > 1.0){ //Probability cannot become larger than 1
+		individuals_new[index_of_child].p = 1.0;
 	} //TODO: Warning for altruism > 1?
 	double random_phenotype = genrand64_real2(); //Is altruism expressed or not? Depends on p
-	if (random_phenotype < individuals_new[i_new+1].p){ //p is the probability to express altruism
-		individuals_new[i_new+1].phenotype = 1;
+	if (random_phenotype < individuals_new[index_of_child].p){ //p is the probability to express altruism
+		individuals_new[index_of_child].phenotype = 1;
 	}
 	else{
-		individuals_new[i_new+1].phenotype = 0;
+		individuals_new[index_of_child].phenotype = 0;
 	}
 }
 
@@ -578,12 +573,31 @@ void freeMemory(void){
 }
 
 /**
+ * Generates a file with basic information about the simulation.
+ */
+void printRunInfoToFile(FILE *filename, int timestep){
+	if(timestep == 0){
+		printParametersToFile(filename);
+		fprintf(filename, "Timestep Time Mean_altruism_level Population_size\n");
+	}
+	if(timestep % OUTPUTINTERVAL == 0){
+		double cumulative_altruism;
+		for(int i = 0; i < population_size_old; i++){
+			cumulative_altruism += individuals_old[i].altruism;
+		}
+		double mean_altruism = cumulative_altruism/population_size_old;
+		fprintf(filename, "%d %f %f %d\n", timestep, timestep*DELTATIME, mean_altruism, population_size_old);
+	}
+}
+
+/**
  * Prints predefined parameters to the input file.
  */
 void printParametersToFile(FILE *filename){
 	time_t tm;
 	time(&tm);
-	fprintf(filename, "Simulation from %s performed at %s", __FILE__, ctime(&tm));
+	fprintf(filename, "Simulation from %s performed at %s\n", __FILE__, ctime(&tm));
+	fprintf(filename, "Output files are created with run id: %s\n", run_id);
 	fprintf(filename, "Predefined parameters:\n");
 	fprintf(filename, "Tmax = %d\n", TMAX);
 	fprintf(filename, "DeltaTime = %f\n", DELTATIME);
@@ -702,9 +716,7 @@ void printPerCellStatistics(FILE *filename, int timestep){
 	}
 	if(timestep % OUTPUTINTERVAL == 0){
 		for(int position = 0; position < NPOS; position++){
-			int x = floor(position/XMAX) + 1; //TODO: Maybe make functions to convert from x and y to position and back
-			int y = (position % XMAX) + 1;
-			fprintf(filename, "%d %f %d %d %d %f %f %f\n", timestep, timestep*DELTATIME, position, x, y, creal(density[position]), creal(altruism[position]), creal(normal_altruism_convolution[position]));
+			fprintf(filename, "%d %f %d %f %f %f\n", timestep, timestep*DELTATIME, position, creal(density[position]), creal(altruism[position]), creal(normal_altruism_convolution[position]));
 		}
 	}
 }
@@ -716,7 +728,7 @@ void printPerCellStatistics(FILE *filename, int timestep){
 void printExperiencedAltruismMatrixToFile(){
 	for(int index = 0; index < NPOS; index++){
 		if(index != 0){
-			if(index % XMAX == 0){
+			if(index % N == 0){
 				fprintf(expaltr_file, "\n");
 			} else {
 				fprintf(expaltr_file, "\t");
@@ -733,7 +745,7 @@ void printExperiencedAltruismMatrixToFile(){
 void printDensityMatrixToFile(){
 	for(int index = 0; index < NPOS; index++){
 		if(index != 0){
-			if(index % XMAX == 0){
+			if(index % N == 0){
 				fprintf(density_file, "\n");
 			} else {
 				fprintf(density_file, "\t");
@@ -750,7 +762,7 @@ void printDensityMatrixToFile(){
 void printSummedAltruismMatrixToFile(){
 	for(int index = 0; index < NPOS; index++){
 		if(index != 0){
-			if(index % XMAX == 0){
+			if(index % N == 0){
 				fprintf(sumaltr_file, "\n");
 			} else {
 				fprintf(sumaltr_file, "\t");
