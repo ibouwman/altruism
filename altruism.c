@@ -15,7 +15,7 @@
 #include "mt64.h"
 #include <complex.h>
 #include <fftw3.h>
-# include "ziggurat_inline.h"
+#include "ziggurat_inline.h"
 
 //Declare functions (in order of usage)
 //Functions used in main():
@@ -33,7 +33,7 @@ void moveIndividual(int, int);
 unsigned int positiveModulo(int);
 double calculateBirthRate(int);
 void reproduceIndividual(int, int);
-double considerMutation(double, double);
+double considerMutation(double, double, double);
 double randomExponential(void);
 void countPhenotypes(void);
 void checkPopulationSize(int);
@@ -64,12 +64,13 @@ double sumMatrix(fftw_complex*);
 #define STEADYSTATEDENSITY (1 - DEATHRATE/BIRTHRATE) * K
 #define GRIDSIZE (N * DELTASPACE) * (N * DELTASPACE) //Actual size of the grid, not in terms of DELTASPACE
 #define INITIALALTRUISM 0.0
-#define INITIALP 0.5
+#define INITIALP 1.0 //Initial probability that offspring will have phenotype A
 #define THRESHOLD 0.0000000001 //Numbers lower than this are set to 0
 //Parameters
 #define BIRTHRATE 5.0 //Baseline max birth rate
 #define DEATHRATE 1.0
-#define MUTATIONPROBABILITY 0.001
+#define MUTATIONPROBABILITYALTRUISM 0.001
+#define MUTATIONPROBABILITYP 0.0
 #define MEANMUTSIZEALTRUISM 0.005
 #define MEANMUTSIZEP 0.005
 #define ALTRUISMSCALE 1
@@ -79,7 +80,7 @@ double sumMatrix(fftw_complex*);
 #define K 40 //Carrying capacity
 #define B0 1.0 //Basal benefit of altruism
 #define BMAX 5.0 //Maximum benefit of altruism
-#define ALPHA 0.25
+#define ALPHA 1.0 //Use ALPHA = 1 for the original model
 #define BETA (1 - ALPHA)*KAPPA
 #define KAPPA 1.0
 #define N 1024 //2**9
@@ -122,6 +123,8 @@ struct Individual* individuals_old; //This is the 'old state'
 struct Individual* individuals_new; //This is the 'new state'
 struct Individual** individuals_old_ptr;
 struct Individual** individuals_new_ptr;
+int* density_A;
+int* density_B;
 
 int INITIALPOPULATIONSIZE = round(STEADYSTATEDENSITY * GRIDSIZE); //Initial and maximal population size depend on steady state density and grid size.
 int MAXPOPULATIONSIZE = round(1.5 * K * GRIDSIZE); //Note that MAXPOPULATIONSIZE can be larger than NPOS because multiple individuals are allowed at the same position.
@@ -129,18 +132,21 @@ int newborns;
 int deaths;
 int A_counter;
 int B_counter;
-int counter;
 
 //Output files:
 FILE *expaltr_file;
 FILE *density_file;
+FILE *density_file_A;
+FILE *density_file_B;
 FILE *sumaltr_file;
 FILE *traits_file;
 char filename_experienced_altruism[50];
 char filename_summed_altruism[50];
-char filename_density[50];
+char filename_density[50];;
+char filename_density_A[50];;
+char filename_density_B[50];
 char filename_runinfo[50];
-char run_id[] = "01024"; //Give your run a unique id to prevent overwriting of output files
+char run_id[] = "00000"; //Give your run a unique id to prevent overwriting of output files
 
 //Main
 int main() {
@@ -165,7 +171,7 @@ int main() {
 	makeIndividuals();
 	population_size_old = INITIALPOPULATIONSIZE;
 	population_size_new = 0;
-	counter = 1; //Counter for file naming
+	int counter = 1; //Counter for file naming
 	FILE *runinfo_file;
 	sprintf(filename_runinfo, "%s_runinfo.txt", run_id);
 	runinfo_file = fopen(filename_runinfo, "w+");
@@ -187,15 +193,16 @@ int main() {
     		printf("%d out of %d timesteps.\n", t, TMAX);
     	}
     	if(t % OUTPUTINTERVAL == 0){
-    		sprintf(filename_traits, "traits_t%d.txt", t);
-    		traits_file = fopen(filename_traits, "w+");
-    		printTraitsPerIndividualToFile();
         	sprintf(filename_experienced_altruism, "%s_expaltr_%04d.txt", run_id, counter);
         	expaltr_file = fopen(filename_experienced_altruism, "w+");
         	sprintf(filename_summed_altruism, "%s_sumaltr_%04d.txt", run_id, counter);
         	sumaltr_file = fopen(filename_summed_altruism, "w+");
         	sprintf(filename_density, "%s_density_%04d.txt", run_id, counter);
         	density_file = fopen(filename_density, "w+");
+        	sprintf(filename_density_A, "%s_densityA_%04d.txt", run_id, counter);
+        	density_file_A = fopen(filename_density_A, "w+");
+        	sprintf(filename_density_B, "%s_densityB_%04d.txt", run_id, counter);
+        	density_file_B = fopen(filename_density_B, "w+");
         	counter++;
         	printExperiencedAltruismMatrixToFile();
         	printDensityMatrixToFile();
@@ -250,6 +257,8 @@ void allocateMemory(void){
         printf("ERROR: Memory for individuals_new not allocated.\n");
         exit(1);
     }
+    density_A = malloc(NPOS * sizeof(int));
+    density_B = malloc(NPOS * sizeof(int));
 	normal_for_density = fftw_alloc_complex(NPOS);
 	normal_for_altruism = fftw_alloc_complex(NPOS);
     normal_for_density_forward = fftw_alloc_complex(NPOS);
@@ -345,14 +354,14 @@ void createLocalDensityMatrix(){
  * //TODO: Largely the same as fillAltruismMatrix(), it's probably more elegant to make one function for both
  */
 void fillDensityMatrix(){
-	int sum_counter = 0;
 	for (int i = 0; i < population_size_old; i++){
 		int position_of_individual = (individuals_old[i].xpos - 1) * N + (individuals_old[i].ypos - 1);
 		density[position_of_individual] += 1;
-		sum_counter += 1;
-	}
-	if(sum_counter != population_size_old){
-		printf("Problem: number of individuals in density matrix (%d) doesn't match population size (%d)!\n", sum_counter, population_size_old); //TODO: This can be removed after all required tests are successful
+		if(individuals_old[i].phenotype == 1){
+			density_A[position_of_individual] += 1;
+		}else{
+			density_B[position_of_individual] += 1;
+		}
 	}
 }
 
@@ -437,8 +446,8 @@ double calculateBirthRate(int i){
  */
 void reproduceIndividual(int index_of_parent, int index_of_child){
 	individuals_new[index_of_child] = individuals_old[index_of_parent]; //Initially child = parent BUT consider mutation below
-	individuals_new[index_of_child].altruism = considerMutation(individuals_new[index_of_child].altruism, MEANMUTSIZEALTRUISM);
-	individuals_new[index_of_child].p = considerMutation(individuals_new[index_of_child].p, MEANMUTSIZEP);
+	individuals_new[index_of_child].altruism = considerMutation(individuals_new[index_of_child].altruism, MEANMUTSIZEALTRUISM, MUTATIONPROBABILITYALTRUISM);
+	individuals_new[index_of_child].p = considerMutation(individuals_new[index_of_child].p, MEANMUTSIZEP, MUTATIONPROBABILITYP);
 	if(individuals_new[index_of_child].p > 1.0){ //Probability cannot become larger than 1
 		individuals_new[index_of_child].p = 1.0;
 	} //TODO: Warning for altruism > 1?
@@ -457,9 +466,9 @@ void reproduceIndividual(int index_of_parent, int index_of_child){
  * mean_mutation_size: The mean size of a mutation in the trait.
  * return: The value of the trait after considering mutation.
  */
-double considerMutation(double trait, double mean_mutation_size){
+double considerMutation(double trait, double mean_mutation_size, double mutation_probability){
 	double random_number = genrand64_real2();
-	if(random_number < MUTATIONPROBABILITY){
+	if(random_number < mutation_probability){
 		double delta_trait;
 		double random_direction = genrand64_real2(); //...Randomly decide direction of mutation
 		if(random_direction < 0.5){
@@ -530,6 +539,8 @@ void updateStates(){
 	*individuals_new_ptr = temp; //Reset the new individuals for the next state by pointing to the block with 0s
 	population_size_old = population_size_new; //Switch to new state, including all individuals that were born or didn't die in the previous timestep
 	population_size_new = 0; //Reset value of new state population size
+	memset(density_A, 0, NPOS * sizeof(*density_A));
+	memset(density_B, 0, NPOS * sizeof(*density_B));
 	memset(density, 0, NPOS * sizeof(*density));
 	memset(density_forward, 0, NPOS * sizeof(*density_forward));
 	memset(normal_forward_density_forward_product, 0, NPOS * sizeof(*normal_forward_density_forward_product));
@@ -558,6 +569,8 @@ void destroyFFTWplans(void){
 void freeMemory(void){
 	free(individuals_old);
 	free(individuals_new);
+	free(density_A);
+	free(density_B);
 	fftw_free(normal_for_density);
 	fftw_free(normal_for_altruism);
 	fftw_free(normal_for_density_forward);
@@ -573,20 +586,32 @@ void freeMemory(void){
 }
 
 /**
- * Generates a file with basic information about the simulation.
+ * Generates a file with basic information about the simulation. Make sure to call countPhenotypes() first!
  */
 void printRunInfoToFile(FILE *filename, int timestep){
 	if(timestep == 0){
 		printParametersToFile(filename);
-		fprintf(filename, "Timestep Time Mean_altruism_level Population_size\n");
+		fprintf(filename, "Timestep Time Population_size As Bs  Mean_altruism_all Mean_altruism_A Mean_altruism_B Mean_p_all Mean_p_A Mean_p_B\n");
 	}
 	if(timestep % OUTPUTINTERVAL == 0){
-		double cumulative_altruism;
+		double cumulative_altruism = 0; double cumulative_p = 0;
+		double cumulative_altruism_A = 0; double cumulative_p_A = 0;
+		double cumulative_altruism_B = 0; double cumulative_p_B = 0;
 		for(int i = 0; i < population_size_old; i++){
 			cumulative_altruism += individuals_old[i].altruism;
+			cumulative_p += individuals_old[i].p;
+			if(individuals_old[i].phenotype = 1){
+				cumulative_altruism_A += individuals_old[i].altruism;
+				cumulative_p_A += individuals_old[i].p;
+			}else{
+				cumulative_altruism_B += individuals_old[i].altruism;
+				cumulative_p_B += individuals_old[i].p;
+			}
 		}
-		double mean_altruism = cumulative_altruism/population_size_old;
-		fprintf(filename, "%d %f %f %d\n", timestep, timestep*DELTATIME, mean_altruism, population_size_old);
+		double mean_altruism = cumulative_altruism/population_size_old; double mean_p = cumulative_p/population_size_old;
+		double mean_altruism_A = cumulative_altruism_A/A_counter; double mean_p_A = cumulative_p_A/A_counter;
+		double mean_altruism_B = cumulative_altruism_B/B_counter; double mean_p_B = cumulative_p_B/B_counter;
+		fprintf(filename, "%d %f %d %d %d %f %f %f %f %f %f\n", timestep, timestep*DELTATIME, population_size_old, A_counter, B_counter, mean_altruism, mean_altruism_A, mean_altruism_B, mean_p, mean_p_A, mean_p_B);
 	}
 }
 
@@ -608,7 +633,7 @@ void printParametersToFile(FILE *filename){
 	fprintf(filename, "Initial p = %f\n", INITIALP);
 	fprintf(filename, "Death rate = %f\n", DEATHRATE);
 	fprintf(filename, "Birth rate = %f\n", BIRTHRATE);
-	fprintf(filename, "Mutation probability altruism = %f\n", MUTATIONPROBABILITY);
+	fprintf(filename, "Mutation probability altruism = %f\n", MUTATIONPROBABILITYALTRUISM);
 	fprintf(filename, "Mean mutation size altruism = %f\n", MEANMUTSIZEALTRUISM);
 	fprintf(filename, "Scale of altruism = %d\n", ALTRUISMSCALE);
 	fprintf(filename, "Scale of competition = %d\n", COMPETITIONSCALE);
@@ -747,11 +772,17 @@ void printDensityMatrixToFile(){
 		if(index != 0){
 			if(index % N == 0){
 				fprintf(density_file, "\n");
+				fprintf(density_file_A, "\n");
+				fprintf(density_file_B, "\n");
 			} else {
 				fprintf(density_file, "\t");
+				fprintf(density_file_A, "\t");
+				fprintf(density_file_B, "\t");
 			}
 		}
-		fprintf(density_file, "%f", creal(density[index]));
+		fprintf(density_file, "%d", (int)creal(density[index]));
+		fprintf(density_file_A, "%d", density_A[index]);
+		fprintf(density_file_B, "%d", density_B[index]);
 	}
 }
 
