@@ -15,8 +15,6 @@
 #include "mt64.h"
 #include <complex.h>
 #include <fftw3.h>
-#include "ziggurat.h"
-#include "random.h"
 #include "ziggurat_inline.h"
 
 //Declare functions (in order of usage)
