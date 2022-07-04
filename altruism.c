@@ -29,10 +29,10 @@ void createLocalDensityMatrix(void);
 void fillDensityMatrix(void);
 void createExperiencedAltruismMatrix(void);
 void fillAltruismMatrix(void);
-void moveIndividual(int, int);
+void moveIndividual(int);
 unsigned int positiveModulo(int);
 double calculateBirthRate(int);
-void reproduceIndividual(int, int);
+void considerAltruismMutation(int);
 double randomExponential(void);
 void checkPopulationSize(int);
 void updateStates(void);
@@ -73,7 +73,7 @@ double sumMatrix(fftw_complex*);
 #define K 40 //Carrying capacity
 #define B0 1.0 //Basal benefit of altruism
 #define BMAX 5.0 //Maximum benefit of altruism
-#define N 100 //1024 //2**9
+#define N 1024 //2**9
 #define NPOS N * N
 
 //Declare structures
@@ -191,17 +191,17 @@ int main() {
 				//First: Administration:
 				individuals_new[i_new] = individuals_old[i];
 				population_size_new += 1;
-				double birth_rate = calculateBirthRate(i); //TODO: Might as well use individuals_new[i_new] here instead of individuals_old[i]
-				//Now, the individual in individuals_new is exactly the same as it was in individuals_old.
+				double birth_rate = calculateBirthRate(i_new);
 				//Second: Action:
-				moveIndividual(i, i_new); //...Move it
+				moveIndividual(i_new); //...Move it
 				if (probabilityOfEvent < DEATHRATE*DELTATIME + birth_rate*DELTATIME){ //If the individual reproduces...
 					//First: Administration:
+					individuals_new[i_new + 1] = individuals_old[i]; //Initially child = parent
 					population_size_new += 1; //Add child to the population size of the next timestep
 					newborns += 1; //Add child to the newborns of this timestep
 					//Second: Action:
-					reproduceIndividual(i, i_new + 1); //...Create the child
-					moveIndividual(i, i_new + 1); //Move the child: Index of child = index of parent in the new state + 1. The initial position of the child is the position of the parent in the old state, hence i.
+					considerAltruismMutation(i_new + 1); //Consider mutation of the altruism level
+					moveIndividual(i_new + 1); //Move the child
 				}
 			}
 		}
@@ -363,16 +363,15 @@ void fillAltruismMatrix(){
 
 /**
  * Assigns a new position in the field to the input individual.
- * initial_index: The index that indicates the current position of the individual.
- * new_index: The index that indicates where the new position of the individual should be stored.
+ * index_of_individual: The index of the individual in the individuals_new array. Make sure that the individual has been copied to the new state before this function is called.
  */
-void moveIndividual(int initial_index, int new_index){ //TODO: Look into more efficient method: only use modulo operation if new position is out of bounds?
+void moveIndividual(int index_of_individual){ //TODO: Look into more efficient method: only use modulo operation if new position is out of bounds?
 	float normal_x = r4_nor_value();
 	float normal_y = r4_nor_value();
 	int move_x = round((MOVEMENTSCALE/DELTASPACE) * normal_x);
 	int move_y = round((MOVEMENTSCALE/DELTASPACE) * normal_y);
-	individuals_new[new_index].xpos = positiveModulo((individuals_old[initial_index].xpos + move_x - 1)) + 1;
-	individuals_new[new_index].ypos = positiveModulo((individuals_old[initial_index].ypos + move_y - 1)) + 1;
+	individuals_new[index_of_individual].xpos = positiveModulo((individuals_new[index_of_individual].xpos + move_x - 1)) + 1;
+	individuals_new[index_of_individual].ypos = positiveModulo((individuals_new[index_of_individual].ypos + move_y - 1)) + 1;
 }
 
 /**
@@ -393,12 +392,12 @@ unsigned int positiveModulo(int dividend){
  * i: The individual whose birth rate is calculated.
  * returns: The birth rate of the individual.
  */
-double calculateBirthRate(int i){
-	int position = (individuals_old[i].xpos - 1) * N + (individuals_old[i].ypos - 1); //Convert x and y coordinates of individual to find corresponding position in fftw_complex object
+double calculateBirthRate(int index_of_parent){
+	int position = (individuals_new[index_of_parent].xpos - 1) * N + (individuals_new[index_of_parent].ypos - 1); //Convert x and y coordinates of individual to find corresponding position in fftw_complex object
 	double local_density = normal_density_convolution[position];
 	double experienced_altruism = normal_altruism_convolution[position];
 	double benefit = (BMAX * experienced_altruism)/((BMAX/B0) + experienced_altruism);
-	double birth_rate = BIRTHRATE * (1.0 - individuals_old[i].altruism + benefit) * (1.0 - (local_density/K));
+	double birth_rate = BIRTHRATE * (1.0 - individuals_new[index_of_parent].altruism + benefit) * (1.0 - (local_density/K));
 	if (birth_rate < 0){
 		birth_rate = 0; //Negative birth rates are set to 0
 	}
@@ -409,8 +408,7 @@ double calculateBirthRate(int i){
  * Creates a child of individual i at index i+1 in the individuals_new array.
  * i: The parent individual.
  */
-void reproduceIndividual(int index_of_parent, int index_of_child){
-	individuals_new[index_of_child] = individuals_old[index_of_parent]; //Initially child = parent BUT consider mutation below
+void considerAltruismMutation(int index_of_child){
 	double random_altruism = genrand64_real2();
 	if(random_altruism < MUTATIONPROBABILITY){ //If mutation occurs...
 		double delta_altruism;
@@ -421,7 +419,7 @@ void reproduceIndividual(int index_of_parent, int index_of_child){
 		else{
 			delta_altruism = MEANMUTSIZEALTRUISM * randomExponential();
 		}
-		individuals_new[index_of_child].altruism = individuals_old[index_of_parent].altruism + delta_altruism; //...Calculate altruism level of child
+		individuals_new[index_of_child].altruism = individuals_new[index_of_child].altruism + delta_altruism; //...Calculate altruism level of child
 		if(individuals_new[index_of_child].altruism < 0){
 			individuals_new[index_of_child].altruism = 0.0;
 		}
