@@ -73,7 +73,7 @@ double sumMatrix(fftw_complex*);
 #define K 40 //Carrying capacity
 #define B0 1.0 //Basal benefit of altruism
 #define BMAX 5.0 //Maximum benefit of altruism
-#define N 1024 //2**9
+#define N 100 //1024 //2**9
 #define NPOS N * N
 
 //Declare structures
@@ -126,7 +126,7 @@ char filename_experienced_altruism[50];
 char filename_summed_altruism[50];
 char filename_density[50];
 char filename_runinfo[50];
-char run_id[] = "01024"; //Give your run a unique id to prevent overwriting of output files
+char run_id[] = "00000"; //Give your run a unique id to prevent overwriting of output files
 
 //Main
 int main() {
@@ -632,7 +632,7 @@ void printDensityMatrixToFile(){
 				fprintf(density_file, "\t");
 			}
 		}
-		fprintf(density_file, "%f", creal(density[index]));
+		fprintf(density_file, "%d", (int)creal(density[index]));
 	}
 }
 
