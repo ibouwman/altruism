@@ -79,7 +79,7 @@ double sumMatrix(fftw_complex*);
 #define B0 1.0 //Basal benefit of altruism
 #define BMAX 5.0 //Maximum benefit of altruism
 #define ALPHA 0.25
-#define BETA (1 - ALPHA)*K
+#define BETA (1 - ALPHA)*KAPPA
 #define KAPPA 1.0
 #define XMAX 512
 #define YMAX XMAX //The arena must be a square; XMAX and YMAX are used for code readability
