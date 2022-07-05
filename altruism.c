@@ -125,6 +125,11 @@ struct Individual** individuals_old_ptr;
 struct Individual** individuals_new_ptr;
 int* density_A;
 int* density_B;
+double* sumaltr; //Matrix for summed altruism of all individuals. Summed altruism of all As is in the altruism fftw complex object
+double* sumaltr_B;
+double* sump;
+double* sump_A;
+double* sump_B;
 
 int INITIALPOPULATIONSIZE = round(STEADYSTATEDENSITY * GRIDSIZE); //Initial and maximal population size depend on steady state density and grid size.
 int MAXPOPULATIONSIZE = round(1.5 * K * GRIDSIZE); //Note that MAXPOPULATIONSIZE can be larger than NPOS because multiple individuals are allowed at the same position.
@@ -139,12 +144,22 @@ FILE *density_file;
 FILE *density_file_A;
 FILE *density_file_B;
 FILE *sumaltr_file;
-FILE *traits_file;
+FILE *sumaltr_file_A;
+FILE *sumaltr_file_B;
+FILE *sump_file;
+FILE *sump_file_A;
+FILE *sump_file_B;
+FILE *runinfo_file;
 char filename_experienced_altruism[50];
-char filename_summed_altruism[50];
 char filename_density[50];;
 char filename_density_A[50];;
 char filename_density_B[50];
+char filename_summed_altruism[50];
+char filename_summed_altruism_A[50];
+char filename_summed_altruism_B[50];
+char filename_summed_p[50];
+char filename_summed_p_A[50];
+char filename_summed_p_B[50];
 char filename_runinfo[50];
 char run_id[] = "00000"; //Give your run a unique id to prevent overwriting of output files
 
@@ -172,7 +187,6 @@ int main() {
 	population_size_old = INITIALPOPULATIONSIZE;
 	population_size_new = 0;
 	int counter = 1; //Counter for file naming
-	FILE *runinfo_file;
 	sprintf(filename_runinfo, "%s_runinfo.txt", run_id);
 	runinfo_file = fopen(filename_runinfo, "w+");
     for (int t = 0; t < TMAX; t++) {
@@ -195,18 +209,29 @@ int main() {
     	if(t % OUTPUTINTERVAL == 0){
         	sprintf(filename_experienced_altruism, "%s_expaltr_%04d.txt", run_id, counter);
         	expaltr_file = fopen(filename_experienced_altruism, "w+");
-        	sprintf(filename_summed_altruism, "%s_sumaltr_%04d.txt", run_id, counter);
-        	sumaltr_file = fopen(filename_summed_altruism, "w+");
         	sprintf(filename_density, "%s_density_%04d.txt", run_id, counter);
         	density_file = fopen(filename_density, "w+");
         	sprintf(filename_density_A, "%s_densityA_%04d.txt", run_id, counter);
         	density_file_A = fopen(filename_density_A, "w+");
         	sprintf(filename_density_B, "%s_densityB_%04d.txt", run_id, counter);
         	density_file_B = fopen(filename_density_B, "w+");
+        	sprintf(filename_summed_altruism, "%s_sumaltr_%04d.txt", run_id, counter);
+        	sumaltr_file = fopen(filename_summed_altruism, "w+");
+        	sprintf(filename_summed_altruism_A, "%s_sumaltrA_%04d.txt", run_id, counter);
+        	sumaltr_file_A = fopen(filename_summed_altruism_A, "w+");
+        	sprintf(filename_summed_altruism_B, "%s_sumaltrB_%04d.txt", run_id, counter);
+        	sumaltr_file_B = fopen(filename_summed_altruism_B, "w+");
+        	sprintf(filename_summed_p, "%s_sump_%04d.txt", run_id, counter);
+        	sump_file = fopen(filename_summed_p, "w+");
+        	sprintf(filename_summed_p_A, "%s_sumpA_%04d.txt", run_id, counter);
+        	sump_file_A = fopen(filename_summed_p_A, "w+");
+        	sprintf(filename_summed_p_B, "%s_sumpB_%04d.txt", run_id, counter);
+        	sump_file_B = fopen(filename_summed_p_B, "w+");
         	counter++;
         	printExperiencedAltruismMatrixToFile();
         	printDensityMatrixToFile();
         	printSummedAltruismMatrixToFile();
+        	printSummedPmatrixToFile();
     	}
 		for (int i = 0; i < population_size_old; i++){
 			int i_new = i + newborns - deaths; //The index of i in the new timestep, taking into account births and deaths the current timestep
@@ -259,6 +284,11 @@ void allocateMemory(void){
     }
     density_A = malloc(NPOS * sizeof(int));
     density_B = malloc(NPOS * sizeof(int));
+    sumaltr = malloc(NPOS * sizeof(double));
+    sumaltr_B = malloc(NPOS * sizeof(double));
+    sump = malloc(NPOS * sizeof(double));
+    sump_A = malloc(NPOS * sizeof(double));
+    sump_B = malloc(NPOS * sizeof(double));
 	normal_for_density = fftw_alloc_complex(NPOS);
 	normal_for_altruism = fftw_alloc_complex(NPOS);
     normal_for_density_forward = fftw_alloc_complex(NPOS);
@@ -382,14 +412,21 @@ void createExperiencedAltruismMatrix(){
 }
 
 /**
- * Creates a matrix with for each position in the field the cumulative level of EXPRESSED altruism of the individuals at that position.
+ * Creates a matrix with for each position in the field the cumulative level of EXPRESSED altruism of the individuals at that position,
+ * and stores it in an fftw complex object called altruism. Also stores summed p and altruism levels in matrices for output.
  * Similar to the creation of the density matrix.
  */
 void fillAltruismMatrix(){
 	for (int i = 0; i < population_size_old; i++){
+		int position_of_individual = (individuals_old[i].xpos - 1) * N + (individuals_old[i].ypos - 1);
+		sumaltr[position_of_individual] += individuals_old[i].altruism;
+		sump[position_of_individual] +- individuals_old[i].p;
 		if (individuals_old[i].phenotype == 1){
-			int position_of_individual = (individuals_old[i].xpos - 1) * N + (individuals_old[i].ypos - 1);
 			altruism[position_of_individual] += individuals_old[i].altruism;
+			sump_A[position_of_individual] += individuals_old[i].p;
+		} else {
+			sumaltr_B[position_of_individual] += individuals_old[i].altruism;
+			sump_B[position_of_individual] += individuals_old[i].p;
 		}
 	}
 }
@@ -539,6 +576,11 @@ void updateStates(){
 	population_size_new = 0; //Reset value of new state population size
 	memset(density_A, 0, NPOS * sizeof(*density_A));
 	memset(density_B, 0, NPOS * sizeof(*density_B));
+	memset(sumaltr, 0, NPOS * sizeof(*sumaltr));
+	memset(sumaltr_B, 0, NPOS * sizeof(*sumaltr_B));
+	memset(sump, 0, NPOS * sizeof(*sump));
+	memset(sump_A, 0, NPOS * sizeof(*sump_A));
+	memset(sump_B, 0, NPOS * sizeof(*sump_B));
 	memset(density, 0, NPOS * sizeof(*density));
 	memset(density_forward, 0, NPOS * sizeof(*density_forward));
 	memset(normal_forward_density_forward_product, 0, NPOS * sizeof(*normal_forward_density_forward_product));
@@ -569,6 +611,11 @@ void freeMemory(void){
 	free(individuals_new);
 	free(density_A);
 	free(density_B);
+	free(sumaltr);
+	free(sumaltr_B);
+	free(sump);
+	free(sump_A);
+	free(sump_B);
 	fftw_free(normal_for_density);
 	fftw_free(normal_for_altruism);
 	fftw_free(normal_for_density_forward);
@@ -735,7 +782,7 @@ void printTraitsPerIndividualToFile(void){
 void printPerCellStatistics(FILE *filename, int timestep){
 	if(timestep == 0){
 		printParametersToFile(filename);
-		fprintf(filename, "Timestep Time Position X Y Density Cumulative_altruism Experienced_altruism\n");
+		fprintf(filename, "Timestep Time Position X Y Density Cumulative_altruism_A Experienced_altruism\n");
 	}
 	if(timestep % OUTPUTINTERVAL == 0){
 		for(int position = 0; position < NPOS; position++){
@@ -793,11 +840,40 @@ void printSummedAltruismMatrixToFile(){
 		if(index != 0){
 			if(index % N == 0){
 				fprintf(sumaltr_file, "\n");
+				fprintf(sumaltr_file_A, "\n");
+				fprintf(sumaltr_file_B, "\n");
 			} else {
 				fprintf(sumaltr_file, "\t");
+				fprintf(sumaltr_file_A, "\t");
+				fprintf(sumaltr_file_B, "\t");
 			}
 		}
-		fprintf(sumaltr_file, "%f", creal(altruism[index]));
+		fprintf(sumaltr_file, "%f", sumaltr[index]);
+		fprintf(sumaltr_file_A, "%f", creal(altruism[index])); //The summed altruism of As (phenotype 1) is in the altruism fftw object
+		fprintf(sumaltr_file_B, "%f", sumaltr_B[index]);
+	}
+}
+
+/**
+ * Prints the summed p levels of the individuals per cell for a timestep in a tab-separated matrix that reflects the grid.
+ * Should be called not more than once per timestep.
+ */
+void printSummedPmatrixToFile(){
+	for(int index = 0; index < NPOS; index++){
+		if(index != 0){
+			if(index % N == 0){
+				fprintf(sump_file, "\n");
+				fprintf(sump_file_A, "\n");
+				fprintf(sump_file_B, "\n");
+			} else {
+				fprintf(sump_file, "\t");
+				fprintf(sump_file_A, "\t");
+				fprintf(sump_file_B, "\t");
+			}
+		}
+		fprintf(sump_file, "%f", sump[index]);
+		fprintf(sump_file_A, "%f", sump_A[index]);
+		fprintf(sump_file_B, "%f", sump_B[index]);
 	}
 }
 
