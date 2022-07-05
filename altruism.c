@@ -29,11 +29,11 @@ void createLocalDensityMatrix(void);
 void fillDensityMatrix(void);
 void createExperiencedAltruismMatrix(void);
 void fillAltruismMatrix(void);
-void moveIndividual(int, int);
+void moveIndividual(int);
 unsigned int positiveModulo(int);
 double calculateBirthRate(int);
-void reproduceIndividual(int, int);
-double considerMutation(double, double, double);
+void considerMutationAndDevelopment(int);
+double considerTraitMutation(double, double, double);
 double randomExponential(void);
 void countPhenotypes(void);
 void checkPopulationSize(int);
@@ -218,17 +218,17 @@ int main() {
 				//First: Administration:
 				individuals_new[i_new] = individuals_old[i];
 				population_size_new += 1;
-				double birth_rate = calculateBirthRate(i); //TODO: Might as well use individuals_new[i_new] here instead of individuals_old[i]
-				//Now, the individual in individuals_new is exactly the same as it was in individuals_old.
+				double birth_rate = calculateBirthRate(i_new);
 				//Second: Action:
-				moveIndividual(i, i_new); //...Move it
+				moveIndividual(i_new); //...Move it
 				if (probabilityOfEvent < DEATHRATE*DELTATIME + birth_rate*DELTATIME){ //If the individual reproduces...
 					//First: Administration:
+					individuals_new[i_new + 1] = individuals_old[i]; //Initially child = parent
 					population_size_new += 1; //Add child to the population size of the next timestep
 					newborns += 1; //Add child to the newborns of this timestep
 					//Second: Action:
-					reproduceIndividual(i, i_new + 1); //...Create the child
-					moveIndividual(i, i_new + 1); //Move the child: Index of child = index of parent in the new state + 1. The initial position of the child is the position of the parent in the old state, hence i.
+					considerMutationAndDevelopment(i_new + 1); //Consider trait mutation and phenotype development of the child
+					moveIndividual(i_new + 1); //Move the child
 				}
 			}
 		}
@@ -396,16 +396,15 @@ void fillAltruismMatrix(){
 
 /**
  * Assigns a new position in the field to the input individual.
- * initial_index: The index that indicates the current position of the individual.
- * new_index: The index that indicates where the new position of the individual should be stored.
+ * index_of_individual: The index of the individual in the individuals_new array. Make sure that the individual has been copied to the new state before this function is called.
  */
-void moveIndividual(int initial_index, int new_index){ //TODO: Look into more efficient method: only use modulo operation if new position is out of bounds?
+void moveIndividual(int index_of_individual){ //TODO: Look into more efficient method: only use modulo operation if new position is out of bounds?
 	float normal_x = r4_nor_value();
 	float normal_y = r4_nor_value();
 	int move_x = round((MOVEMENTSCALE/DELTASPACE) * normal_x);
 	int move_y = round((MOVEMENTSCALE/DELTASPACE) * normal_y);
-	individuals_new[new_index].xpos = positiveModulo((individuals_old[initial_index].xpos + move_x - 1)) + 1;
-	individuals_new[new_index].ypos = positiveModulo((individuals_old[initial_index].ypos + move_y - 1)) + 1;
+	individuals_new[index_of_individual].xpos = positiveModulo((individuals_new[index_of_individual].xpos + move_x - 1)) + 1;
+	individuals_new[index_of_individual].ypos = positiveModulo((individuals_new[index_of_individual].ypos + move_y - 1)) + 1;
 }
 
 /**
@@ -426,13 +425,13 @@ unsigned int positiveModulo(int dividend){
  * i: The individual whose birth rate is calculated.
  * returns: The birth rate of the individual.
  */
-double calculateBirthRate(int i){
-	int position = (individuals_old[i].xpos - 1) * N + (individuals_old[i].ypos - 1); //Convert x and y coordinates of individual to find corresponding position in fftw_complex object
+double calculateBirthRate(int index_of_parent){
+	int position = (individuals_new[index_of_parent].xpos - 1) * N + (individuals_new[index_of_parent].ypos - 1); //Convert x and y coordinates of individual to find corresponding position in fftw_complex object
 	double local_density = normal_density_convolution[position];
 	double experienced_altruism = normal_altruism_convolution[position];
 	double benefit = (BMAX * experienced_altruism)/((BMAX/B0) + experienced_altruism);
-	double cost =  ALPHA*individuals_old[i].altruism + (BETA*individuals_old[i].altruism)/(KAPPA + individuals_old[i].altruism);
-	double effectiveCost = individuals_old[i].phenotype * cost; //Only individuals that express altruism (phenotype = 1) pay a cost
+	double cost =  ALPHA*individuals_new[index_of_parent].altruism + (BETA*individuals_new[index_of_parent].altruism)/(KAPPA + individuals_new[index_of_parent].altruism);
+	double effectiveCost = individuals_new[index_of_parent].phenotype * cost; //Only individuals that express altruism (phenotype = 1) pay a cost
 	double birth_rate = BIRTHRATE * (1.0 - effectiveCost + benefit) * (1.0 - (local_density/K));
 	if (birth_rate < 0){
 		birth_rate = 0; //Negative birth rates are set to 0
@@ -441,16 +440,15 @@ double calculateBirthRate(int i){
 }
 
 /**
- * Creates a child of individual i at index i+1 in the individuals_new array.
- * i: The parent individual.
+ * Considers mutation and development of the child individual.
+ * index_of_child: The index of the child in the individuals_new array.
  */
-void reproduceIndividual(int index_of_parent, int index_of_child){
-	individuals_new[index_of_child] = individuals_old[index_of_parent]; //Initially child = parent BUT consider mutation below
-	individuals_new[index_of_child].altruism = considerMutation(individuals_new[index_of_child].altruism, MEANMUTSIZEALTRUISM, MUTATIONPROBABILITYALTRUISM);
-	individuals_new[index_of_child].p = considerMutation(individuals_new[index_of_child].p, MEANMUTSIZEP, MUTATIONPROBABILITYP);
+void considerMutationAndDevelopment(int index_of_child){
+	individuals_new[index_of_child].altruism = considerTraitMutation(individuals_new[index_of_child].altruism, MEANMUTSIZEALTRUISM, MUTATIONPROBABILITYALTRUISM);
+	individuals_new[index_of_child].p = considerTraitMutation(individuals_new[index_of_child].p, MEANMUTSIZEP, MUTATIONPROBABILITYP);
 	if(individuals_new[index_of_child].p > 1.0){ //Probability cannot become larger than 1
 		individuals_new[index_of_child].p = 1.0;
-	} //TODO: Warning for altruism > 1?
+	} //TODO: Warning for altruism > 1?k
 	double random_phenotype = genrand64_real2(); //Is altruism expressed or not? Depends on p
 	if (random_phenotype < individuals_new[index_of_child].p){ //p is the probability to express altruism
 		individuals_new[index_of_child].phenotype = 1;
@@ -466,7 +464,7 @@ void reproduceIndividual(int index_of_parent, int index_of_child){
  * mean_mutation_size: The mean size of a mutation in the trait.
  * return: The value of the trait after considering mutation.
  */
-double considerMutation(double trait, double mean_mutation_size, double mutation_probability){
+double considerTraitMutation(double trait, double mean_mutation_size, double mutation_probability){
 	double random_number = genrand64_real2();
 	if(random_number < mutation_probability){
 		double delta_trait;
