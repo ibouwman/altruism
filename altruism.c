@@ -19,12 +19,10 @@
 
 //Declare functions (in order of usage)
 //Functions used in main():
-void srand(unsigned int seed);
 void allocateMemory(void);
 void createFFTWplans(void);
 void createNormalKernel(int, fftw_complex*);
 void makeIndividuals(void);
-int rand(void);
 void createLocalDensityMatrix(void);
 void fillDensityMatrix(void);
 void createExperiencedAltruismMatrix(void);
@@ -46,11 +44,12 @@ void printParametersToFile(FILE*);
 void printMeanAltruismToFile(FILE*, int);
 void printPopulationSizeToFile(FILE*, int);
 void printPhenotypesToFile(FILE*, int);
-void printTraitsPerIndividualToFile(void);
+void printTraitsPerIndividualToFile(FILE*);
 void printPerCellStatistics(FILE*, int);
 void printExperiencedAltruismMatrixToFile(void);
 void printDensityMatrixToFile(void);
 void printSummedAltruismMatrixToFile(void);
+void printSummedPmatrixToFile(void);
 void printSummedMatrixToFile(FILE*, int);
 double sumMatrix(fftw_complex*);
 
@@ -70,7 +69,7 @@ double sumMatrix(fftw_complex*);
 #define BIRTHRATE 5.0 //Baseline max birth rate
 #define DEATHRATE 1.0
 #define MUTATIONPROBABILITYALTRUISM 0.001
-#define MUTATIONPROBABILITYP 0.0
+#define MUTATIONPROBABILITYP 0.001
 #define MEANMUTSIZEALTRUISM 0.005
 #define MEANMUTSIZEP 0.005
 #define ALTRUISMSCALE 1
@@ -83,7 +82,7 @@ double sumMatrix(fftw_complex*);
 #define ALPHA 1.0 //Use ALPHA = 1 for the original model
 #define BETA (1 - ALPHA)*KAPPA
 #define KAPPA 1.0
-#define N 1024 //2**9
+#define N 20 //1024 //2**9
 #define NPOS N * N
 
 //Declare structures
@@ -420,7 +419,7 @@ void fillAltruismMatrix(){
 	for (int i = 0; i < population_size_old; i++){
 		int position_of_individual = (individuals_old[i].xpos - 1) * N + (individuals_old[i].ypos - 1);
 		sumaltr[position_of_individual] += individuals_old[i].altruism;
-		sump[position_of_individual] +- individuals_old[i].p;
+		sump[position_of_individual] += individuals_old[i].p;
 		if (individuals_old[i].phenotype == 1){
 			altruism[position_of_individual] += individuals_old[i].altruism;
 			sump_A[position_of_individual] += individuals_old[i].p;
@@ -769,9 +768,9 @@ void printPhenotypesToFile(FILE *filename, int timestep){
 	}
 }
 
-void printTraitsPerIndividualToFile(void){
+void printTraitsPerIndividualToFile(FILE *filename){
 	for(int i = 0; i < population_size_old; i++){
-		fprintf(traits_file, "%d\t%f\t%f\n", individuals_old[i].phenotype, individuals_old[i].altruism, individuals_old[i].p);
+		fprintf(filename, "%d\t%f\t%f\n", individuals_old[i].phenotype, individuals_old[i].altruism, individuals_old[i].p);
 	}
 }
 
