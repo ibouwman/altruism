@@ -19,12 +19,10 @@
 
 //Declare functions (in order of usage)
 //Functions used in main():
-void srand(unsigned int seed);
 void allocateMemory(void);
 void createFFTWplans(void);
 void createNormalKernel(int, fftw_complex*);
 void makeIndividuals(void);
-int rand(void);
 void createLocalDensityMatrix(void);
 void fillDensityMatrix(void);
 void createExperiencedAltruismMatrix(void);
