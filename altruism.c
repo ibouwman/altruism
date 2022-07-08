@@ -82,7 +82,7 @@ double sumMatrix(fftw_complex*);
 #define ALPHA 1.0 //Use ALPHA = 1 for the original model
 #define BETA (1 - ALPHA)*KAPPA
 #define KAPPA 1.0
-#define N 20 //1024 //2**9
+#define N 1024 //2**9
 #define NPOS N * N
 
 //Declare structures
@@ -484,7 +484,7 @@ void considerMutationAndDevelopment(int index_of_child){
 	individuals_new[index_of_child].p = considerTraitMutation(individuals_new[index_of_child].p, MEANMUTSIZEP, MUTATIONPROBABILITYP);
 	if(individuals_new[index_of_child].p > 1.0){ //Probability cannot become larger than 1
 		individuals_new[index_of_child].p = 1.0;
-	} //TODO: Warning for altruism > 1?k
+	} //TODO: Warning for altruism > 1?
 	double random_phenotype = genrand64_real2(); //Is altruism expressed or not? Depends on p
 	if (random_phenotype < individuals_new[index_of_child].p){ //p is the probability to express altruism
 		individuals_new[index_of_child].phenotype = 1;
@@ -644,7 +644,7 @@ void printRunInfoToFile(FILE *filename, int timestep){
 		for(int i = 0; i < population_size_old; i++){
 			cumulative_altruism += individuals_old[i].altruism;
 			cumulative_p += individuals_old[i].p;
-			if(individuals_old[i].phenotype = 1){
+			if(individuals_old[i].phenotype == 1){
 				cumulative_altruism_A += individuals_old[i].altruism;
 				cumulative_p_A += individuals_old[i].p;
 			}else{
@@ -679,6 +679,8 @@ void printParametersToFile(FILE *filename){
 	fprintf(filename, "Birth rate = %f\n", BIRTHRATE);
 	fprintf(filename, "Mutation probability altruism = %f\n", MUTATIONPROBABILITYALTRUISM);
 	fprintf(filename, "Mean mutation size altruism = %f\n", MEANMUTSIZEALTRUISM);
+	fprintf(filename, "Mutation probability p = %f\n", MUTATIONPROBABILITYP);
+	fprintf(filename, "Mean mutation size p = %f\n", MEANMUTSIZEP);
 	fprintf(filename, "Scale of altruism = %d\n", ALTRUISMSCALE);
 	fprintf(filename, "Scale of competition = %d\n", COMPETITIONSCALE);
 	fprintf(filename, "Scale of movement = %f\n", MOVEMENTSCALE);
