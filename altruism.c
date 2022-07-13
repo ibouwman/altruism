@@ -51,6 +51,7 @@ void printDensityMatrixToFile(void);
 void printSummedAltruismMatrixToFile(void);
 void printSummedPmatrixToFile(void);
 void printTraitMatrixToFile(int, int, double, double);
+void printSelectionToFile(FILE*, int);
 void printSummedMatrixToFile(FILE*, int);
 double sumMatrix(fftw_complex*);
 
@@ -95,6 +96,7 @@ struct Individual {
 	double altruism;
 	double p;
 	int phenotype; //altruism expressed (1) or not expressed (0)
+	int offspring;
 };
 
 //Declare global variables
@@ -154,6 +156,7 @@ FILE *sump_file_A;
 FILE *sump_file_B;
 FILE *runinfo_file;
 FILE *trait_matrix_file;
+FILE *selection_file;
 char filename_experienced_altruism[50];
 char filename_density[50];;
 char filename_density_A[50];;
@@ -166,6 +169,7 @@ char filename_summed_p_A[50];
 char filename_summed_p_B[50];
 char filename_trait_matrix[50];
 char filename_runinfo[50];
+char filename_selection[50];
 char run_id[] = "00000"; //Give your run a unique id to prevent overwriting of output files
 
 //Main
@@ -194,6 +198,8 @@ int main() {
 	int counter = 1; //Counter for file naming
 	sprintf(filename_runinfo, "%s_runinfo.txt", run_id);
 	runinfo_file = fopen(filename_runinfo, "w+");
+	sprintf(filename_selection, "%s_selection.txt", run_id);
+	selection_file = fopen(filename_selection, "w+");
     for (int t = 0; t < TMAX; t++) {
     	if(t == 0){
     		printf("Simulation has started!\nProgress (printed every 5 timesteps):\n");
@@ -243,6 +249,10 @@ int main() {
     	}
 		for (int i = 0; i < population_size_old; i++){
 			int i_new = i + newborns - deaths; //The index of i in the new timestep, taking into account births and deaths the current timestep
+			if(individuals_new[i_new].offspring != 0){
+				printf("Error! Individual in the new state can't haven non-zero offspring.\n"); //TODO: This error message can be removed once sure that offspring is working correctly
+				exit(0);
+			}
 			double probabilityOfEvent = genrand64_real2();
 			if (probabilityOfEvent < DEATHRATE*DELTATIME){ //If individual dies...
 				deaths += 1;
@@ -250,6 +260,7 @@ int main() {
 			else{ //If individual doesn't die...
 				//First: Administration:
 				individuals_new[i_new] = individuals_old[i];
+				individuals_old[i].offspring += 1; //Update offspring for the 'old' state, to calculate selection
 				population_size_new += 1;
 				double birth_rate = calculateBirthRate(i_new);
 				//Second: Action:
@@ -257,8 +268,10 @@ int main() {
 				if (probabilityOfEvent < DEATHRATE*DELTATIME + birth_rate*DELTATIME){ //If the individual reproduces...
 					//First: Administration:
 					individuals_new[i_new + 1] = individuals_old[i]; //Initially child = parent
+					individuals_new[i_new + 1].offspring = 0; //But with offspring 0
 					population_size_new += 1; //Add child to the population size of the next timestep
 					newborns += 1; //Add child to the newborns of this timestep
+					individuals_old[i].offspring += 1; //Update offspring of the parent for the 'old' state
 					//Second: Action:
 					considerMutationAndDevelopment(i_new + 1); //Consider trait mutation and phenotype development of the child
 					moveIndividual(i_new + 1); //Move the child
@@ -266,6 +279,9 @@ int main() {
 			}
 		}
     	checkPopulationSize(t);
+    	if(t % OUTPUTINTERVAL == 0){
+        	printSelectionToFile(selection_file, t);
+    	}
     	updateStates(); //New state becomes old state
    }
    destroyFFTWplans();
@@ -369,6 +385,7 @@ void makeIndividuals(){
 		individuals_old[i].altruism = INITIALALTRUISM;
 		individuals_old[i].p = INITIALP;
 		individuals_old[i].phenotype = 1; //Initially, all individuals are A
+		individuals_old[i].offspring = 0;
 	}
 }
 
@@ -669,6 +686,40 @@ void printRunInfoToFile(FILE *filename, int timestep){
 		double mean_altruism_B = cumulative_altruism_B/B_counter; double mean_p_B = cumulative_p_B/B_counter;
 		fprintf(filename, "%d %f %d %d %d %f %f %f %f %f %f\n", timestep, timestep*DELTATIME, population_size_old, A_counter, B_counter, mean_altruism, mean_altruism_A, mean_altruism_B, mean_p, mean_p_A, mean_p_B);
 	}
+}
+
+/**
+ * Print selection to file
+ */
+void printSelectionToFile(FILE *filename, int timestep){
+	if(timestep == 0){
+		fprintf(filename, "Timestep Time SelectionP SelectionAltruism\n");
+	}
+	int cumulative_offspring = 0;
+	double cumulative_p = 0;
+	double cumulative_altruism = 0;
+	for(int i = 0; i < population_size_old; i++){
+		cumulative_offspring += individuals_old[i].offspring;
+		cumulative_p += individuals_old[i].p;
+		cumulative_altruism += individuals_old[i].altruism;
+	}
+	double cumulative_fitness = 0;
+	for(int i = 0; i < population_size_old; i++){
+		cumulative_fitness += individuals_old[i].offspring * (population_size_old/cumulative_offspring);
+	}
+	double mean_fitness = cumulative_fitness/population_size_old;
+	double mean_p = cumulative_p/population_size_old;
+	double mean_altruism = cumulative_altruism/population_size_old;
+	double numerator_p = 0;
+	double numerator_altruism = 0;
+	for(int i = 0; i < population_size_old; i++){
+		double fitness = individuals_old[i].offspring * (population_size_old/cumulative_offspring);
+		numerator_p += (fitness - mean_fitness)*(individuals_old[i].p - mean_p);
+		numerator_altruism += (fitness - mean_fitness)*(individuals_old[i].altruism - mean_altruism);
+	}
+	double selection_on_p = numerator_p/population_size_old;
+	double selection_on_altruism = numerator_altruism/population_size_old;
+	fprintf(filename, "%d %f %f %f\n", timestep, timestep*DELTATIME, selection_on_p, selection_on_altruism);
 }
 
 /**
