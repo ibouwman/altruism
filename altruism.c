@@ -35,6 +35,7 @@ double considerTraitMutation(double, double, double);
 double randomExponential(void);
 void countPhenotypes(void);
 void checkPopulationSize(int);
+void calculateSelection(void);
 void updateStates(void);
 void destroyFFTWplans(void);
 void freeMemory(void);
@@ -142,6 +143,8 @@ int newborns;
 int deaths;
 int A_counter;
 int B_counter;
+double cumulative_selection_p = 0.0;
+double cumulative_selection_altruism = 0.0;
 
 //Output files:
 FILE *expaltr_file;
@@ -279,6 +282,7 @@ int main() {
 			}
 		}
     	checkPopulationSize(t);
+    	calculateSelection();
     	if(t % OUTPUTINTERVAL == 0){
         	printSelectionToFile(selection_file, t);
     	}
@@ -589,6 +593,38 @@ void checkPopulationSize(int t){
 }
 
 /**
+ * Calculates selection and updates the value of cumulative_selection.
+ */
+void calculateSelection(void){
+	int cumulative_offspring = 0;
+	double cumulative_p = 0;
+	double cumulative_altruism = 0;
+	for(int i = 0; i < population_size_old; i++){
+		cumulative_offspring += individuals_old[i].offspring;
+		cumulative_p += individuals_old[i].p;
+		cumulative_altruism += individuals_old[i].altruism;
+	}
+	double cumulative_fitness = 0;
+	for(int i = 0; i < population_size_old; i++){
+		cumulative_fitness += individuals_old[i].offspring * (population_size_old/cumulative_offspring);
+	}
+	double mean_fitness = cumulative_fitness/population_size_old;
+	double mean_p = cumulative_p/population_size_old;
+	double mean_altruism = cumulative_altruism/population_size_old;
+	double numerator_p = 0;
+	double numerator_altruism = 0;
+	for(int i = 0; i < population_size_old; i++){
+		double fitness = individuals_old[i].offspring * (population_size_old/cumulative_offspring);
+		numerator_p += (fitness - mean_fitness)*(individuals_old[i].p - mean_p);
+		numerator_altruism += (fitness - mean_fitness)*(individuals_old[i].altruism - mean_altruism);
+	}
+	double selection_on_p = numerator_p/population_size_old;
+	cumulative_selection_p += selection_on_p;
+	double selection_on_altruism = numerator_altruism/population_size_old;
+	cumulative_selection_altruism += selection_on_altruism;
+}
+
+/**
  * Updates the old and new state for the next timestep, i.e. old individuals are replaced by new individuals. Resets all pointers with timestep-specific information.
  */
 void updateStates(){
@@ -689,37 +725,13 @@ void printRunInfoToFile(FILE *filename, int timestep){
 }
 
 /**
- * Print selection to file
+ * Prints selection to file
  */
 void printSelectionToFile(FILE *filename, int timestep){
 	if(timestep == 0){
-		fprintf(filename, "Timestep Time SelectionP SelectionAltruism\n");
+		fprintf(filename, "Timestep Time CumulativeSelectionP CumulativeSelectionAltruism\n");
 	}
-	int cumulative_offspring = 0;
-	double cumulative_p = 0;
-	double cumulative_altruism = 0;
-	for(int i = 0; i < population_size_old; i++){
-		cumulative_offspring += individuals_old[i].offspring;
-		cumulative_p += individuals_old[i].p;
-		cumulative_altruism += individuals_old[i].altruism;
-	}
-	double cumulative_fitness = 0;
-	for(int i = 0; i < population_size_old; i++){
-		cumulative_fitness += individuals_old[i].offspring * (population_size_old/cumulative_offspring);
-	}
-	double mean_fitness = cumulative_fitness/population_size_old;
-	double mean_p = cumulative_p/population_size_old;
-	double mean_altruism = cumulative_altruism/population_size_old;
-	double numerator_p = 0;
-	double numerator_altruism = 0;
-	for(int i = 0; i < population_size_old; i++){
-		double fitness = individuals_old[i].offspring * (population_size_old/cumulative_offspring);
-		numerator_p += (fitness - mean_fitness)*(individuals_old[i].p - mean_p);
-		numerator_altruism += (fitness - mean_fitness)*(individuals_old[i].altruism - mean_altruism);
-	}
-	double selection_on_p = numerator_p/population_size_old;
-	double selection_on_altruism = numerator_altruism/population_size_old;
-	fprintf(filename, "%d %f %f %f\n", timestep, timestep*DELTATIME, selection_on_p, selection_on_altruism);
+	fprintf(filename, "%d %f %f %f\n", timestep, timestep*DELTATIME, cumulative_selection_p, cumulative_selection_altruism);
 }
 
 /**
