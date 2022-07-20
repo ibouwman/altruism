@@ -31,11 +31,12 @@ void moveIndividual(int);
 unsigned int positiveModulo(int);
 double calculateBirthRate(int);
 void considerMutationAndDevelopment(int);
-double considerTraitMutation(double, double, double);
+double calculateTraitDifference(double, double, double);
 double randomExponential(void);
 void countPhenotypes(void);
 void checkPopulationSize(int);
 void calculateSelection(void);
+void calculateTransmission(void);
 void updateStates(void);
 void destroyFFTWplans(void);
 void freeMemory(void);
@@ -84,9 +85,9 @@ double sumMatrix(fftw_complex*);
 #define K 40 //Carrying capacity
 #define B0 1.0 //Basal benefit of altruism
 #define BMAX 5.0 //Maximum benefit of altruism
-#define ALPHA 0.75 //Use ALPHA = 1 for the original model
+#define ALPHA 0.1 //Use ALPHA = 1 for the original model
 #define BETA (1 - ALPHA)*KAPPA
-#define KAPPA 0.1
+#define KAPPA 0.025
 #define N 1024 //2**9
 #define NPOS N * N
 
@@ -141,10 +142,14 @@ int INITIALPOPULATIONSIZE = round(STEADYSTATEDENSITY * GRIDSIZE); //Initial and 
 int MAXPOPULATIONSIZE = round(1.5 * K * GRIDSIZE); //Note that MAXPOPULATIONSIZE can be larger than NPOS because multiple individuals are allowed at the same position.
 int newborns;
 int deaths;
+double total_delta_altruism_per_timestep;
+double total_delta_p_per_timestep;
 int A_counter;
 int B_counter;
 double cumulative_selection_p = 0.0;
 double cumulative_selection_altruism = 0.0;
+double cumulative_transmission_p = 0.0;
+double cumulative_transmission_altruism = 0.0;
 
 //Output files:
 FILE *expaltr_file;
@@ -215,12 +220,14 @@ int main() {
     	printRunInfoToFile(runinfo_file, t);
     	newborns = 0;
 		deaths = 0;
+		total_delta_altruism_per_timestep = 0;
+		total_delta_p_per_timestep = 0;
     	createLocalDensityMatrix();
     	createExperiencedAltruismMatrix();
     	if(t % 5 == 0){
     		printf("%d out of %d timesteps.\n", t, TMAX);
     	}
-    	if(t % OUTPUTINTERVAL == 0){
+    	if(t % OUTPUTINTERVAL == 0){ //Create output files every output interval
         	sprintf(filename_experienced_altruism, "%s_expaltr_%04d.txt", run_id, counter);
         	expaltr_file = fopen(filename_experienced_altruism, "w+");
         	sprintf(filename_density, "%s_density_%04d.txt", run_id, counter);
@@ -253,8 +260,8 @@ int main() {
 		for (int i = 0; i < population_size_old; i++){
 			int i_new = i + newborns - deaths; //The index of i in the new timestep, taking into account births and deaths the current timestep
 			if(individuals_new[i_new].offspring != 0){
-				printf("Error! Individual in the new state can't haven non-zero offspring.\n"); //TODO: This error message can be removed once sure that offspring is working correctly
-				exit(0);
+				printf("ERROR: Individual in the new state can't have non-zero offspring.\n");
+				exit(1);
 			}
 			double probabilityOfEvent = genrand64_real2();
 			if (probabilityOfEvent < DEATHRATE*DELTATIME){ //If individual dies...
@@ -283,6 +290,7 @@ int main() {
 		}
     	checkPopulationSize(t);
     	calculateSelection();
+    	calculateTransmission();
     	if(t % OUTPUTINTERVAL == 0){
         	printSelectionToFile(selection_file, t);
     	}
@@ -511,11 +519,21 @@ double calculateBirthRate(int index_of_parent){
  * index_of_child: The index of the child in the individuals_new array.
  */
 void considerMutationAndDevelopment(int index_of_child){
-	individuals_new[index_of_child].altruism = considerTraitMutation(individuals_new[index_of_child].altruism, MEANMUTSIZEALTRUISM, MUTATIONPROBABILITYALTRUISM);
-	individuals_new[index_of_child].p = considerTraitMutation(individuals_new[index_of_child].p, MEANMUTSIZEP, MUTATIONPROBABILITYP);
-	if(individuals_new[index_of_child].p > 1.0){ //Probability cannot become larger than 1
+	double delta_altruism = calculateTraitDifference(individuals_new[index_of_child].altruism, MEANMUTSIZEALTRUISM, MUTATIONPROBABILITYALTRUISM);
+	total_delta_altruism_per_timestep += delta_altruism;
+	individuals_new[index_of_child].altruism += delta_altruism;
+	if(individuals_new[index_of_child].altruism < 0){ //Altruism cannot become lower than 0
+		individuals_new[index_of_child].altruism = 0;
+	}
+	double delta_p = calculateTraitDifference(individuals_new[index_of_child].p, MEANMUTSIZEP, MUTATIONPROBABILITYP);
+	total_delta_p_per_timestep += delta_p;
+	individuals_new[index_of_child].p += delta_p;
+	if(individuals_new[index_of_child].p < 0){ //Probability cannot become lower than 0
+		individuals_new[index_of_child].p = 0;
+	}
+	else if(individuals_new[index_of_child].p > 1.0){ //And probability cannot become larger than 1
 		individuals_new[index_of_child].p = 1.0;
-	} //TODO: Warning for altruism > 1?
+	}
 	double random_phenotype = genrand64_real2(); //Is altruism expressed or not? Depends on p
 	if (random_phenotype < individuals_new[index_of_child].p){ //p is the probability to express altruism
 		individuals_new[index_of_child].phenotype = 1;
@@ -526,28 +544,24 @@ void considerMutationAndDevelopment(int index_of_child){
 }
 
 /**
- * Considers whether mutation occurs. If so, the trait value is changed.
+ * Calculates difference in trait value between parent and child. If there is no mutation, the difference is 0.
  * trait: The trait under consideration.
  * mean_mutation_size: The mean size of a mutation in the trait.
- * return: The value of the trait after considering mutation.
+ * return: the difference in the trait value between the parent and the child.
  */
-double considerTraitMutation(double trait, double mean_mutation_size, double mutation_probability){
+double calculateTraitDifference(double trait, double mean_mutation_size, double mutation_probability){
 	double random_number = genrand64_real2();
+	double delta_trait = 0.0;
 	if(random_number < mutation_probability){
-		double delta_trait;
 		double random_direction = genrand64_real2(); //...Randomly decide direction of mutation
 		if(random_direction < 0.5){
-			delta_trait = -mean_mutation_size * randomExponential(); //...Calculate change in trait value due to mutation
+			delta_trait += -mean_mutation_size * randomExponential(); //...Calculate change in trait value due to mutation
 		}
 		else{
-			delta_trait = mean_mutation_size * randomExponential(); //...Calculate new trait value (trait value of child initially equals trait value of parent)
-		}
-		trait = trait + delta_trait;
-		if(trait < 0){
-			trait = 0;
+			delta_trait += mean_mutation_size * randomExponential(); //...Calculate new trait value (trait value of child initially equals trait value of parent)
 		}
 	}
-	return trait;
+	return delta_trait;
 }
 
 /**
@@ -593,7 +607,7 @@ void checkPopulationSize(int t){
 }
 
 /**
- * Calculates selection and updates the value of cumulative_selection.
+ * Calculates selection of a single timestep and updates the value of cumulative_selection.
  */
 void calculateSelection(void){
 	int total_offspring = 0;
@@ -627,6 +641,16 @@ void calculateSelection(void){
 	cumulative_selection_p += selection_on_p;
 	double selection_on_altruism = numerator_altruism/population_size_old;
 	cumulative_selection_altruism += selection_on_altruism;
+}
+
+/**
+ * Calculates transmission of a single timestep and updates the value of cumulative_transmission.
+ */
+void calculateTransmission(void){
+	double transmission_p = total_delta_p_per_timestep/population_size_new;
+	cumulative_transmission_p += transmission_p;
+	double transmission_altruism = total_delta_altruism_per_timestep/population_size_new;
+	cumulative_transmission_altruism += transmission_altruism;
 }
 
 /**
@@ -730,13 +754,13 @@ void printRunInfoToFile(FILE *filename, int timestep){
 }
 
 /**
- * Prints selection to file
+ * Prints selection and transmission to a file.
  */
 void printSelectionToFile(FILE *filename, int timestep){
 	if(timestep == 0){
-		fprintf(filename, "Timestep Time cumulativeSelectionP cumulativeSelectionAltruism\n");
+		fprintf(filename, "Timestep Time cumulativeSelectionP cumulativeTransmissionP cumulativeSelectionAltruism cumulativeTransmissionAltruism\n");
 	}
-	fprintf(filename, "%d %f %f %f\n", timestep, timestep*DELTATIME, cumulative_selection_p, cumulative_selection_altruism);
+	fprintf(filename, "%d %f %f %f %f %f\n", timestep, timestep*DELTATIME, cumulative_selection_p, cumulative_transmission_p, cumulative_selection_altruism, cumulative_transmission_altruism);
 }
 
 /**
