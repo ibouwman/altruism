@@ -520,20 +520,26 @@ double calculateBirthRate(int index_of_parent){
  */
 void considerMutationAndDevelopment(int index_of_child){
 	double delta_altruism = calculateTraitDifference(individuals_new[index_of_child].altruism, MEANMUTSIZEALTRUISM, MUTATIONPROBABILITYALTRUISM);
-	total_delta_altruism_per_timestep += delta_altruism;
-	individuals_new[index_of_child].altruism += delta_altruism;
-	if(individuals_new[index_of_child].altruism < 0){ //Altruism cannot become lower than 0
+	if((individuals_new[index_of_child].altruism + delta_altruism) < 0){ //Altruism cannot become smaller than 0
+		delta_altruism = -individuals_new[index_of_child].altruism;
 		individuals_new[index_of_child].altruism = 0;
+	} else {
+		individuals_new[index_of_child].altruism += delta_altruism;
 	}
+	total_delta_altruism_per_timestep += delta_altruism;
 	double delta_p = calculateTraitDifference(individuals_new[index_of_child].p, MEANMUTSIZEP, MUTATIONPROBABILITYP);
-	total_delta_p_per_timestep += delta_p;
-	individuals_new[index_of_child].p += delta_p;
-	if(individuals_new[index_of_child].p < 0){ //Probability cannot become lower than 0
+	if((individuals_new[index_of_child].p + delta_p) < 0){ //Probability cannot become smaller than 0 or larger than 1
+		delta_p = -individuals_new[index_of_child].p;
 		individuals_new[index_of_child].p = 0;
 	}
-	else if(individuals_new[index_of_child].p > 1.0){ //And probability cannot become larger than 1
+	else if((individuals_new[index_of_child].p + delta_p) > 1.0){ //ELSE IF because this only executes if IF statement above is FALSE
+		delta_p = 1 - individuals_new[index_of_child].p;
 		individuals_new[index_of_child].p = 1.0;
 	}
+	else {
+		individuals_new[index_of_child].p += delta_p;
+	}
+	total_delta_p_per_timestep += delta_p;
 	double random_phenotype = genrand64_real2(); //Is altruism expressed or not? Depends on p
 	if (random_phenotype < individuals_new[index_of_child].p){ //p is the probability to express altruism
 		individuals_new[index_of_child].phenotype = 1;
