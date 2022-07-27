@@ -85,9 +85,6 @@ double sumMatrix(fftw_complex*);
 #define K 40 //Carrying capacity
 #define B0 1.0 //Basal benefit of altruism
 #define BMAX 5.0 //Maximum benefit of altruism
-#define ALPHA 0.1 //Use ALPHA = 1 for the original model
-#define BETA (1 - ALPHA)*KAPPA
-#define KAPPA 0.025
 #define N 1024 //2**9
 #define NPOS N * N
 
@@ -101,7 +98,9 @@ struct Individual {
 	int offspring;
 };
 
-//Declare global variables
+//Declare global variables TODO: Put in some order
+double alpha;
+double kappa;
 int population_size_old;
 int population_size_new;
 fftw_complex* normal_for_density;
@@ -178,14 +177,19 @@ char filename_summed_p_B[50];
 char filename_trait_matrix[50];
 char filename_runinfo[50];
 char filename_selection[50];
-char run_id[] = "00000"; //Give your run a unique id to prevent overwriting of output files
 
 //Main
-int main() {
+int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
 	clock_t start = clock();
 	time_t tm;
 	time(&tm);
 	printf("Running %s phenotypic-differentiation branch. Started at %s\n", __FILE__, ctime(&tm));
+	printf("User-defined parameters are:\n alpha = %s\n", argv[1]);
+	printf("kappa = %s\n", argv[2]);
+	printf("runid = %s\n", argv[3]);
+	alpha = atof(argv[1]);
+	kappa = atof(argv[2]);
+	char *run_id = argv[3];
 	init_genrand64(1); //Use time(0) for different numbers every run (not reproducible!)
 	uint32_t jsr_value = 123456789; //Values taken from ziggurat_inline_test.c (available online)
 	uint32_t jcong_value = 234567891;
@@ -505,7 +509,7 @@ double calculateBirthRate(int index_of_parent){
 	double local_density = normal_density_convolution[position];
 	double experienced_altruism = normal_altruism_convolution[position];
 	double benefit = (BMAX * experienced_altruism)/((BMAX/B0) + experienced_altruism);
-	double cost =  ALPHA*individuals_new[index_of_parent].altruism + (BETA*individuals_new[index_of_parent].altruism)/(KAPPA + individuals_new[index_of_parent].altruism);
+	double cost =  alpha*individuals_new[index_of_parent].altruism + ((1 - alpha)*kappa*individuals_new[index_of_parent].altruism)/(kappa + individuals_new[index_of_parent].altruism);
 	double effectiveCost = individuals_new[index_of_parent].phenotype * cost; //Only individuals that express altruism (phenotype = 1) pay a cost
 	double birth_rate = BIRTHRATE * (1.0 - effectiveCost + benefit) * (1.0 - (local_density/K));
 	if (birth_rate < 0){
@@ -776,7 +780,7 @@ void printParametersToFile(FILE *filename){
 	time_t tm;
 	time(&tm);
 	fprintf(filename, "Simulation from %s performed at %s\n", __FILE__, ctime(&tm));
-	fprintf(filename, "Output files are created with run id: %s\n", run_id);
+	fprintf(filename, "Output files are created with the same id as this file.\n");
 	fprintf(filename, "Predefined parameters:\n");
 	fprintf(filename, "Tmax = %d\n", TMAX);
 	fprintf(filename, "DeltaTime = %f\n", DELTATIME);
@@ -796,9 +800,9 @@ void printParametersToFile(FILE *filename){
 	fprintf(filename, "Scale of movement = %f\n", MOVEMENTSCALE);
 	fprintf(filename, "B0 = %f\n", B0);
 	fprintf(filename, "BMAX = %f\n", BMAX);
-	fprintf(filename, "ALPHA = %f\n", ALPHA);
-	fprintf(filename, "BETA = %f\n", BETA);
-	fprintf(filename, "KAPPA = %f\n", KAPPA);
+	fprintf(filename, "alpha = %f\n", alpha);
+	fprintf(filename, "(1 - alpha)*kappa = %f\n", (1 - alpha)*kappa);
+	fprintf(filename, "kappa = %f\n", kappa);
 	fprintf(filename, "K = %d\n", K);
 	fprintf(filename, "Number of fields (kernel) = %d\n", FIELDS);
 }
@@ -822,7 +826,7 @@ void printMeanAltruismToFile(FILE *filename, int timestep){
 		double total_effective_cost_B = 0.0;
 		for(int i = 0; i < population_size_old; i++){
 			total_altruism_all += individuals_old[i].altruism;
-			double cost = ALPHA*individuals_old[i].altruism + (BETA*individuals_old[i].altruism)/(KAPPA + individuals_old[i].altruism);
+			double cost = alpha*individuals_old[i].altruism + ((1 - alpha)*kappa*individuals_old[i].altruism)/(kappa + individuals_old[i].altruism);
 			double effective_cost = individuals_old[i].phenotype * cost;
 			if(individuals_old[i].phenotype == 1){
 				total_altruism_A += individuals_old[i].altruism;
