@@ -143,12 +143,15 @@ int newborns;
 int deaths;
 double total_delta_altruism_per_timestep;
 double total_delta_p_per_timestep;
+double total_delta_p_altruism_product_per_timestep;
 int A_counter;
 int B_counter;
 double cumulative_selection_p = 0.0;
 double cumulative_selection_altruism = 0.0;
+double cumulative_selection_p_altruism_product = 0.0;
 double cumulative_transmission_p = 0.0;
 double cumulative_transmission_altruism = 0.0;
+double cumulative_transmission_p_altruism_product = 0.0;
 
 //Output files:
 FILE *expaltr_file;
@@ -226,6 +229,7 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
 		deaths = 0;
 		total_delta_altruism_per_timestep = 0;
 		total_delta_p_per_timestep = 0;
+		total_delta_p_altruism_product_per_timestep = 0;
     	createLocalDensityMatrix();
     	createExperiencedAltruismMatrix();
     	if(t % 5 == 0){
@@ -523,6 +527,7 @@ double calculateBirthRate(int index_of_parent){
  * index_of_child: The index of the child in the individuals_new array.
  */
 void considerMutationAndDevelopment(int index_of_child){
+	double p_altruism_product_before = individuals_new[index_of_child].altruism * individuals_new[index_of_child].p;
 	double delta_altruism = calculateTraitDifference(individuals_new[index_of_child].altruism, MEANMUTSIZEALTRUISM, MUTATIONPROBABILITYALTRUISM);
 	if((individuals_new[index_of_child].altruism + delta_altruism) < 0){ //Altruism cannot become smaller than 0
 		delta_altruism = -individuals_new[index_of_child].altruism;
@@ -544,6 +549,9 @@ void considerMutationAndDevelopment(int index_of_child){
 		individuals_new[index_of_child].p += delta_p;
 	}
 	total_delta_p_per_timestep += delta_p;
+	double p_altruism_product_after = individuals_new[index_of_child].altruism * individuals_new[index_of_child].p;
+	double delta_p_altruism_product = p_altruism_product_after - p_altruism_product_before;
+	total_delta_p_altruism_product_per_timestep += delta_p_altruism_product;
 	double random_phenotype = genrand64_real2(); //Is altruism expressed or not? Depends on p
 	if (random_phenotype < individuals_new[index_of_child].p){ //p is the probability to express altruism
 		individuals_new[index_of_child].phenotype = 1;
@@ -623,10 +631,12 @@ void calculateSelection(void){
 	int total_offspring = 0;
 	double total_p = 0;
 	double total_altruism = 0;
+	double total_p_altruism_product = 0;
 	for(int i = 0; i < population_size_old; i++){
 		total_offspring += individuals_old[i].offspring;
 		total_p += individuals_old[i].p;
 		total_altruism += individuals_old[i].altruism;
+		total_p_altruism_product += (individuals_old[i].p * individuals_old[i].altruism);
 	}
 	if(total_offspring != population_size_new){
 		printf("Error: The total number of offspring (%d) should equal the population size (%d) in the new timestep.\n", total_offspring, population_size_new);
@@ -640,17 +650,22 @@ void calculateSelection(void){
 	double mean_fitness = 1.0; //total_fitness/population_size_old;
 	double mean_p = total_p/population_size_old;
 	double mean_altruism = total_altruism/population_size_old;
+	double mean_p_altruism_product = total_p_altruism_product/population_size_old;
 	double numerator_p = 0;
 	double numerator_altruism = 0;
+	double numerator_p_altruism_product = 0;
 	for(int i = 0; i < population_size_old; i++){
 		double fitness = individuals_old[i].offspring * relative_fitness;
 		numerator_p += (fitness - mean_fitness)*(individuals_old[i].p - mean_p);
 		numerator_altruism += (fitness - mean_fitness)*(individuals_old[i].altruism - mean_altruism);
+		numerator_p_altruism_product += (fitness - mean_fitness)*((individuals_old[i].p*individuals_old[i].altruism) - mean_p_altruism_product);
 	}
 	double selection_on_p = numerator_p/population_size_old;
 	cumulative_selection_p += selection_on_p;
 	double selection_on_altruism = numerator_altruism/population_size_old;
 	cumulative_selection_altruism += selection_on_altruism;
+	double selection_on_p_altruism_product = numerator_p_altruism_product/population_size_old;
+	cumulative_selection_p_altruism_product += selection_on_p_altruism_product;
 }
 
 /**
@@ -661,6 +676,8 @@ void calculateTransmission(void){
 	cumulative_transmission_p += transmission_p;
 	double transmission_altruism = total_delta_altruism_per_timestep/population_size_new;
 	cumulative_transmission_altruism += transmission_altruism;
+	double transmission_p_altruism_product = total_delta_p_altruism_product_per_timestep/population_size_new;
+	cumulative_transmission_p_altruism_product += transmission_p_altruism_product;
 }
 
 /**
@@ -768,9 +785,9 @@ void printRunInfoToFile(FILE *filename, int timestep){
  */
 void printSelectionToFile(FILE *filename, int timestep){
 	if(timestep == 0){
-		fprintf(filename, "Timestep Time cumulativeSelectionP cumulativeTransmissionP cumulativeSelectionAltruism cumulativeTransmissionAltruism\n");
+		fprintf(filename, "Timestep Time cumulativeSelectionP cumulativeTransmissionP cumulativeSelectionAltruism cumulativeTransmissionAltruism cumulativeSelectionProduct cumulativeTransmissionProduct\n");
 	}
-	fprintf(filename, "%d %f %f %f %f %f\n", timestep, timestep*DELTATIME, cumulative_selection_p, cumulative_transmission_p, cumulative_selection_altruism, cumulative_transmission_altruism);
+	fprintf(filename, "%d %f %f %f %f %f %f %f\n", timestep, timestep*DELTATIME, cumulative_selection_p, cumulative_transmission_p, cumulative_selection_altruism, cumulative_transmission_altruism, cumulative_selection_p_altruism_product, cumulative_transmission_p_altruism_product);
 }
 
 /**
