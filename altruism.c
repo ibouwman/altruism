@@ -187,7 +187,7 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
 	clock_t start = clock();
 	time_t tm;
 	time(&tm);
-	printf("Running %s phenotypic-differentiation branch. Started at %s\n", __FILE__, ctime(&tm));
+	printf("Running %s effective-production branch. Started at %s\n", __FILE__, ctime(&tm));
 	printf("User-defined parameters are:\n alpha = %s\n", argv[1]);
 	printf("kappa = %s\n", argv[2]);
 	printf("runid = %s\n", argv[3]);
