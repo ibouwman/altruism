@@ -550,7 +550,7 @@ void considerMutationAndDevelopment(int index_of_child){
 		individuals_new[index_of_child].p += delta_p;
 	}
 	total_delta_p_per_timestep += delta_p;
-	double altruism_new = (individuals_new[index_of_child].production/individuals_new[index_of_child].p) //No need to check for <0 because p and production are both positive
+	double altruism_new = (individuals_new[index_of_child].production/individuals_new[index_of_child].p); //No need to check for <0 because p and production are both positive
 	double delta_altruism = altruism_new - individuals_new[index_of_child].altruism;
 	total_delta_altruism_per_timestep += delta_altruism;
 	double random_phenotype = genrand64_real2(); //Is altruism expressed or not? Depends on p
