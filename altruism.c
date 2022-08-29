@@ -74,9 +74,9 @@ double sumMatrix(fftw_complex*);
 //Parameters
 #define BIRTHRATE 5.0 //Baseline max birth rate
 #define DEATHRATE 1.0
-#define MUTATIONPROBABILITYALTRUISM 0.001
+#define MUTATIONPROBABILITYPRODUCTION 0.001
 #define MUTATIONPROBABILITYP 0.005
-#define MEANMUTSIZEALTRUISM 0.005
+#define MEANMUTSIZEPRODUCTION 0.005
 #define MEANMUTSIZEP 0.005
 #define ALTRUISMSCALE 1
 #define COMPETITIONSCALE 4
@@ -95,6 +95,7 @@ struct Individual {
 	double altruism;
 	double p;
 	int phenotype; //altruism expressed (1) or not expressed (0)
+	double production;
 	int offspring;
 };
 
@@ -405,6 +406,7 @@ void makeIndividuals(){
 		individuals_old[i].altruism = INITIALALTRUISM;
 		individuals_old[i].p = INITIALP;
 		individuals_old[i].phenotype = 1; //Initially, all individuals are A
+		individuals_old[i].production = individuals_old[i].p * individuals_old[i].phenotype;
 		individuals_old[i].offspring = 0;
 	}
 }
@@ -527,15 +529,14 @@ double calculateBirthRate(int index_of_parent){
  * index_of_child: The index of the child in the individuals_new array.
  */
 void considerMutationAndDevelopment(int index_of_child){
-	double p_altruism_product_before = individuals_new[index_of_child].altruism * individuals_new[index_of_child].p;
-	double delta_altruism = calculateTraitDifference(individuals_new[index_of_child].altruism, MEANMUTSIZEALTRUISM, MUTATIONPROBABILITYALTRUISM);
-	if((individuals_new[index_of_child].altruism + delta_altruism) < 0){ //Altruism cannot become smaller than 0
-		delta_altruism = -individuals_new[index_of_child].altruism;
-		individuals_new[index_of_child].altruism = 0;
+	double delta_production = calculateTraitDifference(individuals_new[index_of_child].production, MEANMUTSIZEPRODUCTION, MUTATIONPROBABILITYPRODUCTION);
+	if((individuals_new[index_of_child].production + delta_production) < 0){ //Production cannot become smaller than 0
+		delta_production = -individuals_new[index_of_child].production;
+		individuals_new[index_of_child].production = 0;
 	} else {
-		individuals_new[index_of_child].altruism += delta_altruism;
+		individuals_new[index_of_child].production += delta_production;
 	}
-	total_delta_altruism_per_timestep += delta_altruism;
+	total_delta_p_altruism_product_per_timestep += delta_production;
 	double delta_p = calculateTraitDifference(individuals_new[index_of_child].p, MEANMUTSIZEP, MUTATIONPROBABILITYP);
 	if((individuals_new[index_of_child].p + delta_p) < 0){ //Probability cannot become smaller than 0 or larger than 1
 		delta_p = -individuals_new[index_of_child].p;
@@ -549,9 +550,9 @@ void considerMutationAndDevelopment(int index_of_child){
 		individuals_new[index_of_child].p += delta_p;
 	}
 	total_delta_p_per_timestep += delta_p;
-	double p_altruism_product_after = individuals_new[index_of_child].altruism * individuals_new[index_of_child].p;
-	double delta_p_altruism_product = p_altruism_product_after - p_altruism_product_before;
-	total_delta_p_altruism_product_per_timestep += delta_p_altruism_product;
+	double altruism_new = (individuals_new[index_of_child].production/individuals_new[index_of_child].p) //No need to check for <0 because p and production are both positive
+	double delta_altruism = altruism_new - individuals_new[index_of_child].altruism;
+	total_delta_altruism_per_timestep += delta_altruism;
 	double random_phenotype = genrand64_real2(); //Is altruism expressed or not? Depends on p
 	if (random_phenotype < individuals_new[index_of_child].p){ //p is the probability to express altruism
 		individuals_new[index_of_child].phenotype = 1;
@@ -808,8 +809,8 @@ void printParametersToFile(FILE *filename){
 	fprintf(filename, "Initial p = %f\n", INITIALP);
 	fprintf(filename, "Death rate = %f\n", DEATHRATE);
 	fprintf(filename, "Birth rate = %f\n", BIRTHRATE);
-	fprintf(filename, "Mutation probability altruism = %f\n", MUTATIONPROBABILITYALTRUISM);
-	fprintf(filename, "Mean mutation size altruism = %f\n", MEANMUTSIZEALTRUISM);
+	fprintf(filename, "Mutation probability production = %f\n", MUTATIONPROBABILITYPRODUCTION);
+	fprintf(filename, "Mean mutation size production = %f\n", MEANMUTSIZEPRODUCTION);
 	fprintf(filename, "Mutation probability p = %f\n", MUTATIONPROBABILITYP);
 	fprintf(filename, "Mean mutation size p = %f\n", MEANMUTSIZEP);
 	fprintf(filename, "Scale of altruism = %d\n", ALTRUISMSCALE);
