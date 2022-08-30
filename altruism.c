@@ -637,7 +637,7 @@ void calculateSelection(void){
 		total_offspring += individuals_old[i].offspring;
 		total_p += individuals_old[i].p;
 		total_altruism += individuals_old[i].altruism;
-		total_p_altruism_product += (individuals_old[i].p * individuals_old[i].altruism);
+		total_p_altruism_product += individuals_old[i].production;
 	}
 	if(total_offspring != population_size_new){
 		printf("Error: The total number of offspring (%d) should equal the population size (%d) in the new timestep.\n", total_offspring, population_size_new);
@@ -659,7 +659,7 @@ void calculateSelection(void){
 		double fitness = individuals_old[i].offspring * relative_fitness;
 		numerator_p += (fitness - mean_fitness)*(individuals_old[i].p - mean_p);
 		numerator_altruism += (fitness - mean_fitness)*(individuals_old[i].altruism - mean_altruism);
-		numerator_p_altruism_product += (fitness - mean_fitness)*((individuals_old[i].p*individuals_old[i].altruism) - mean_p_altruism_product);
+		numerator_p_altruism_product += (fitness - mean_fitness)*(individuals_old[i].production - mean_p_altruism_product);
 	}
 	double selection_on_p = numerator_p/population_size_old;
 	cumulative_selection_p += selection_on_p;
