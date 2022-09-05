@@ -406,7 +406,7 @@ void makeIndividuals(){
 		individuals_old[i].altruism = INITIALALTRUISM;
 		individuals_old[i].p = INITIALP;
 		individuals_old[i].phenotype = 1; //Initially, all individuals are A
-		individuals_old[i].production = individuals_old[i].p * individuals_old[i].phenotype;
+		individuals_old[i].production = INITIALP * INITIALALTRUISM;
 		individuals_old[i].offspring = 0;
 	}
 }
