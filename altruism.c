@@ -23,6 +23,8 @@ void allocateMemory(void);
 void createFFTWplans(void);
 void createNormalKernel(int, fftw_complex*);
 void makeIndividuals(void);
+void defineColonyCenterPoints(void);
+int decideRelativePosition(int);
 void createLocalDensityMatrix(void);
 void fillDensityMatrix(void);
 void createExperiencedAltruismMatrix(void);
@@ -59,14 +61,14 @@ double sumMatrix(fftw_complex*);
 
 //Define parameters and settings, following 2D/parameters in the Fortran code (and Table 1 of the paper)
 //Settings
-#define TMAX 100001
+#define TMAX 62500 //Time = 5000
 #define OUTPUTINTERVAL 1250 //Number of timesteps between each output print
 #define FIELDS 7 //Number of fields to take into account (in each direction) when creating the normal kernel
 #define DELTATIME 0.08 //Multiply rate by DELTATIME to get probability per timestep
 #define DELTASPACE 0.1 //Size of a position. This equals 1/resolution in the Fortran code.
 #define STEADYSTATEDENSITY (1 - DEATHRATE/BIRTHRATE) * K
 #define GRIDSIZE (N * DELTASPACE) * (N * DELTASPACE) //Actual size of the grid, not in terms of DELTASPACE
-#define INITIALALTRUISM 0.0
+#define INITIALALTRUISM 0.2
 #define INITIALP 1.0 //Initial probability that offspring will have phenotype A
 #define THRESHOLD 0.0000000001 //Numbers lower than this are set to 0
 #define NBINSALTRUISM 10
@@ -74,8 +76,8 @@ double sumMatrix(fftw_complex*);
 //Parameters
 #define BIRTHRATE 5.0 //Baseline max birth rate
 #define DEATHRATE 1.0
-#define MUTATIONPROBABILITYALTRUISM 0.001
-#define MUTATIONPROBABILITYP 0.005
+#define MUTATIONPROBABILITYALTRUISM 0.0 //0.001
+#define MUTATIONPROBABILITYP 0.0 //0.005
 #define MEANMUTSIZEALTRUISM 0.005
 #define MEANMUTSIZEP 0.005
 #define ALTRUISMSCALE 1
@@ -96,6 +98,7 @@ struct Individual {
 	double p;
 	int phenotype; //altruism expressed (1) or not expressed (0)
 	int offspring;
+	int label;
 };
 
 //Declare global variables TODO: Put in some order
@@ -136,6 +139,8 @@ double* sump;
 double* sump_A;
 double* sump_B;
 int* trait_matrix;
+int* xCenterPoints;
+int* yCenterPoints;
 
 int INITIALPOPULATIONSIZE = round(STEADYSTATEDENSITY * GRIDSIZE); //Initial and maximal population size depend on steady state density and grid size.
 int MAXPOPULATIONSIZE = round(1.5 * K * GRIDSIZE); //Note that MAXPOPULATIONSIZE can be larger than NPOS because multiple individuals are allowed at the same position.
@@ -186,7 +191,7 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
 	clock_t start = clock();
 	time_t tm;
 	time(&tm);
-	printf("Running %s phenotypic-differentiation branch. Started at %s\n", __FILE__, ctime(&tm));
+	printf("Running %s track-colonies branch. Started at %s\n", __FILE__, ctime(&tm));
 	printf("User-defined parameters are:\n alpha = %s\n", argv[1]);
 	printf("kappa = %s\n", argv[2]);
 	printf("runid = %s\n", argv[3]);
@@ -334,6 +339,8 @@ void allocateMemory(void){
     sump_A = malloc(NPOS * sizeof(double));
     sump_B = malloc(NPOS * sizeof(double));
     trait_matrix = malloc(NBINSALTRUISM * NBINSP * sizeof(int));
+	xCenterPoints = malloc(188 * sizeof(int)); //Depends on the number of colonies
+	yCenterPoints = malloc(188 * sizeof(int));
 	normal_for_density = fftw_alloc_complex(NPOS);
 	normal_for_altruism = fftw_alloc_complex(NPOS);
     normal_for_density_forward = fftw_alloc_complex(NPOS);
@@ -396,17 +403,56 @@ void createNormalKernel(int scale, fftw_complex* normal_kernel2D){
 /**
  * Creates the initial individuals. Called once at the beginning of the code.
  */
-void makeIndividuals(){
+void makeIndividuals(){ //TODO: Make colony placement more robust (replace hard-coded values)
+	defineColonyCenterPoints();
 	for (int i = 0; i < INITIALPOPULATIONSIZE; i++){
-		double random_x = genrand64_real2();
-		individuals_old[i].xpos = ceil(random_x * N); //ceil so individuals can't have position 0
-		double random_y = genrand64_real2();
-		individuals_old[i].ypos = ceil(random_y * N);
+		double random_colony = genrand64_real2();
+		int colonyIndex = round(random_colony * 187); //188 colonies so max index is 187
+		individuals_old[i].xpos = xCenterPoints[colonyIndex] + decideRelativePosition(20);
+		individuals_old[i].ypos = yCenterPoints[colonyIndex] + decideRelativePosition(20);
 		individuals_old[i].altruism = INITIALALTRUISM;
 		individuals_old[i].p = INITIALP;
 		individuals_old[i].phenotype = 1; //Initially, all individuals are A
 		individuals_old[i].offspring = 0;
+		individuals_old[i].label = colonyIndex;
 	}
+}
+
+/**
+ * Defines the center points of colonies in a hexagonal pattern with between-colony distance 80 (in cells), and stores the x and y coordinates of the colonies in xCenterPoints and yCenterpoints, respectively.
+ */
+void defineColonyCenterPoints(){
+	int colonyIndex = 0;
+	for(int x = 40; x < N; x += 80){ //Determine center points in even 'columns'. Distance between the center points of two colonies is ca. 80 grid cells
+		for(int y = 40; y < N; y += 140){ //Vertical distance between two colonies is ca. 2*sqrt(8^2 - (0.5 * 8)^2)
+			xCenterPoints[colonyIndex] = x;
+			yCenterPoints[colonyIndex] = y;
+			colonyIndex++;
+		}
+	}
+	for(int x = 80; x < N; x += 80){ //Determine center points in even 'columns'
+		for(int y = 110; y < N; y += 140){
+			xCenterPoints[colonyIndex] = x;
+			yCenterPoints[colonyIndex] = y;
+			colonyIndex++;
+		}
+	}
+}
+
+/**
+ * Randomly decides an x or y position relative to the colony center within a given radius (in cells).
+ * Returns: The relative position.
+ */
+int decideRelativePosition(int colony_radius){
+	int relative_position;
+	double random_direction = genrand64_real2();
+	double random_position = genrand64_real2();
+	if(random_direction < 0.5){
+		relative_position = round(random_position * colony_radius);
+	} else {
+		relative_position = -round(random_position * colony_radius);
+	}
+	return relative_position;
 }
 
 /**
@@ -736,6 +782,8 @@ void freeMemory(void){
 	free(sump_A);
 	free(sump_B);
 	free(trait_matrix);
+	free(xCenterPoints);
+	free(yCenterPoints);
 	fftw_free(normal_for_density);
 	fftw_free(normal_for_altruism);
 	fftw_free(normal_for_density_forward);
