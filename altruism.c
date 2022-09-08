@@ -61,8 +61,8 @@ double sumMatrix(fftw_complex*);
 
 //Define parameters and settings, following 2D/parameters in the Fortran code (and Table 1 of the paper)
 //Settings
-#define TMAX 62500 //Time = 5000
-#define OUTPUTINTERVAL 1250 //Number of timesteps between each output print
+#define TMAX 5000 //Time = 5000
+#define OUTPUTINTERVAL 50 //Number of timesteps between each output print
 #define FIELDS 7 //Number of fields to take into account (in each direction) when creating the normal kernel
 #define DELTATIME 0.08 //Multiply rate by DELTATIME to get probability per timestep
 #define DELTASPACE 0.1 //Size of a position. This equals 1/resolution in the Fortran code.
@@ -220,7 +220,7 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
 	runinfo_file = fopen(filename_runinfo, "w+");
 	sprintf(filename_selection, "%s_selection.txt", run_id);
 	selection_file = fopen(filename_selection, "w+");
-    for (int t = 0; t < TMAX; t++) {
+    for (int t = 0; t < TMAX; t++){
     	if(t == 0){
     		printf("Simulation has started!\nProgress (printed every 5 timesteps):\n");
     	}
@@ -271,6 +271,11 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
         	printTraitMatrixToFile(NBINSALTRUISM, NBINSP, 0.01, 0.1); //TODO: Think about global/local variables, or adding maxvalue for p or altruism instead of binsize
     	}
 		for (int i = 0; i < population_size_old; i++){
+			if(t == 2499){ //Once equilibrium has been reached, change the altruism level of one of the colonies
+				if(individuals_new[i].label == 80){
+					individuals_new[i].altruism = 0.3;
+				}
+			}
 			int i_new = i + newborns - deaths; //The index of i in the new timestep, taking into account births and deaths the current timestep
 			if(individuals_new[i_new].offspring != 0){
 				printf("ERROR: Individual in the new state can't have non-zero offspring.\n");
@@ -419,7 +424,8 @@ void makeIndividuals(){ //TODO: Make colony placement more robust (replace hard-
 }
 
 /**
- * Defines the center points of colonies in a hexagonal pattern with between-colony distance 80 (in cells), and stores the x and y coordinates of the colonies in xCenterPoints and yCenterpoints, respectively.
+ * Defines the center points of 188 colonies in a hexagonal pattern with between-colony distance 80 (in cells),
+ * and stores the x and y coordinates of the colonies in xCenterPoints and yCenterpoints, respectively.
  */
 void defineColonyCenterPoints(){
 	int colonyIndex = 0;
@@ -430,13 +436,14 @@ void defineColonyCenterPoints(){
 			colonyIndex++;
 		}
 	}
-	for(int x = 80; x < N; x += 80){ //Determine center points in even 'columns'
+	for(int x = 80; x < N; x += 80){ //Determine center points in even 'columns'. Starting point += half between-center point distance
 		for(int y = 110; y < N; y += 140){
 			xCenterPoints[colonyIndex] = x;
 			yCenterPoints[colonyIndex] = y;
 			colonyIndex++;
 		}
 	}
+	printf("Number of colonies: %d\n", colonyIndex);
 }
 
 /**
