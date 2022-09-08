@@ -758,27 +758,31 @@ void freeMemory(void){
 void printRunInfoToFile(FILE *filename, int timestep){
 	if(timestep == 0){
 		printParametersToFile(filename);
-		fprintf(filename, "Timestep Time Population_size As Bs  Mean_altruism_all Mean_altruism_A Mean_altruism_B Mean_p_all Mean_p_A Mean_p_B\n");
+		fprintf(filename, "Timestep Time Population_size As Bs  Mean_altruism_all Mean_altruism_A Mean_altruism_B Mean_p_all Mean_p_A Mean_p_B Mean_production_all Mean_production_A Mean_production_B\n");
 	}
 	if(timestep % OUTPUTINTERVAL == 0){
-		double total_altruism = 0; double total_p = 0;
-		double total_altruism_A = 0; double total_p_A = 0;
-		double total_altruism_B = 0; double total_p_B = 0;
+		double total_altruism = 0; double total_p = 0; double total_production = 0;
+		double total_altruism_A = 0; double total_p_A = 0; double total_production_A = 0;
+		double total_altruism_B = 0; double total_p_B = 0; double total_production_B = 0;
 		for(int i = 0; i < population_size_old; i++){
 			total_altruism += individuals_old[i].altruism;
 			total_p += individuals_old[i].p;
+			total_production += individuals_old[i].production;
 			if(individuals_old[i].phenotype == 1){
 				total_altruism_A += individuals_old[i].altruism;
 				total_p_A += individuals_old[i].p;
+				total_production_A += individuals_old[i].production;
 			}else{
 				total_altruism_B += individuals_old[i].altruism;
 				total_p_B += individuals_old[i].p;
+				total_production_B += individuals_old[i].production;
 			}
 		}
-		double mean_altruism = total_altruism/population_size_old; double mean_p = total_p/population_size_old;
-		double mean_altruism_A = total_altruism_A/A_counter; double mean_p_A = total_p_A/A_counter;
-		double mean_altruism_B = total_altruism_B/B_counter; double mean_p_B = total_p_B/B_counter;
-		fprintf(filename, "%d %f %d %d %d %f %f %f %f %f %f\n", timestep, timestep*DELTATIME, population_size_old, A_counter, B_counter, mean_altruism, mean_altruism_A, mean_altruism_B, mean_p, mean_p_A, mean_p_B);
+		double mean_altruism = total_altruism/population_size_old; double mean_p = total_p/population_size_old; double mean_production = total_production/population_size_old;
+		double mean_altruism_A = total_altruism_A/A_counter; double mean_p_A = total_p_A/A_counter; double mean_production_A = total_production_A/A_counter;
+		double mean_altruism_B = total_altruism_B/B_counter; double mean_p_B = total_p_B/B_counter; double mean_production_B = total_production_B/B_counter;
+		fprintf(filename, "%d %f %d %d %d %f %f %f %f %f %f %f %f %f\n",
+				timestep, timestep*DELTATIME, population_size_old, A_counter, B_counter, mean_altruism, mean_altruism_A, mean_altruism_B, mean_p, mean_p_A, mean_p_B, mean_production, mean_production_A, mean_production_B);
 	}
 }
 
