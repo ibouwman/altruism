@@ -538,9 +538,9 @@ void considerMutationAndDevelopment(int index_of_child){
 	}
 	total_delta_p_altruism_product_per_timestep += delta_production;
 	double delta_p = calculateTraitDifference(individuals_new[index_of_child].p, MEANMUTSIZEP, MUTATIONPROBABILITYP);
-	if((individuals_new[index_of_child].p + delta_p) < 0){ //Probability cannot become smaller than 0 or larger than 1
+	if((individuals_new[index_of_child].p + delta_p) < THRESHOLD){ //Probability cannot become smaller than 0 or larger than 1. Use a threshold slightly above 0 so altruism doesn't go to infinity.
 		delta_p = -individuals_new[index_of_child].p;
-		individuals_new[index_of_child].p = 0;
+		individuals_new[index_of_child].p = THRESHOLD;
 	}
 	else if((individuals_new[index_of_child].p + delta_p) > 1.0){ //ELSE IF because this only executes if IF statement above is FALSE
 		delta_p = 1 - individuals_new[index_of_child].p;
@@ -549,7 +549,7 @@ void considerMutationAndDevelopment(int index_of_child){
 	else {
 		individuals_new[index_of_child].p += delta_p;
 	}
-	total_delta_p_per_timestep += delta_p; //TODO: store new inds_new[index].altruism!!
+	total_delta_p_per_timestep += delta_p;
 	double altruism_new = (individuals_new[index_of_child].production/individuals_new[index_of_child].p); //No need to check for <0 because p and production are both positive
 	double delta_altruism = altruism_new - individuals_new[index_of_child].altruism;
 	individuals_new[index_of_child].altruism = altruism_new;
