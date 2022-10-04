@@ -265,6 +265,11 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
         	printSummedAltruismMatrixToFile();
         	printSummedPmatrixToFile();
         	printTraitMatrixToFile(NBINSALTRUISM, NBINSP, 0.01, 0.1); //TODO: Think about global/local variables, or adding maxvalue for p or altruism instead of binsize
+        	fclose(expaltr_file);
+        	fclose(density_file); fclose(density_file_A); fclose(density_file_B);
+        	fclose(sumaltr_file); fclose(sumaltr_file_A); fclose(sumaltr_file_B);
+        	fclose(sump_file); fclose(sump_file_A); fclose(sump_file_B);
+        	fclose(trait_matrix_file);
     	}
 		for (int i = 0; i < population_size_old; i++){
 			int i_new = i + newborns - deaths; //The index of i in the new timestep, taking into account births and deaths the current timestep
@@ -307,6 +312,8 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
    }
    destroyFFTWplans();
    freeMemory();
+   fclose(runinfo_file);
+   fclose(selection_file);
    clock_t end = clock();
    double runtime = (double)((end - start)/CLOCKS_PER_SEC);
    printf("\nDone! Run took %f seconds.\n", runtime);
