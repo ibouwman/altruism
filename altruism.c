@@ -176,6 +176,9 @@ int main() {
         	printExperiencedAltruismMatrixToFile();
         	printDensityMatrixToFile();
         	printSummedAltruismMatrixToFile();
+        	fclose(expaltr_file);
+        	fclose(sumaltr_file);
+        	fclose(density_file);
     	}
     	//printSummedMatrixToFile(outputfile, t);
     	//printPerCellStatistics(outputfile, t);
@@ -208,6 +211,8 @@ int main() {
    }
    destroyFFTWplans();
    freeMemory();
+   fclose(runinfo_file);
+   fclose(selection_file);
    clock_t end = clock();
    double runtime = (double)((end - start)/CLOCKS_PER_SEC);
    printf("\nDone! Run took %f seconds.\n", runtime);
