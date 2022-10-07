@@ -61,7 +61,7 @@ double sumMatrix(fftw_complex*);
 
 //Define parameters and settings, following 2D/parameters in the Fortran code (and Table 1 of the paper)
 //Settings
-#define TMAX 5000 //Time = 5000
+#define TMAX 6251 //Time = 5000
 #define OUTPUTINTERVAL 50 //Number of timesteps between each output print
 #define FIELDS 7 //Number of fields to take into account (in each direction) when creating the normal kernel
 #define DELTATIME 0.08 //Multiply rate by DELTATIME to get probability per timestep
@@ -201,7 +201,7 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
 	char *run_id = argv[3];
 	initial_altruism = atof(argv[4]);
 	new_altruism = atof(argv[5]);
-	init_genrand64(1); //Use time(0) for different numbers every run (not reproducible!)
+	init_genrand64(time(0)); //Use time(0) for different numbers every run (not reproducible!), or use e.g. 1 for reproducible results
 	uint32_t jsr_value = 123456789; //Values taken from ziggurat_inline_test.c (available online)
 	uint32_t jcong_value = 234567891;
 	uint32_t w_value = 345678912;
@@ -243,6 +243,7 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
     	if(t % 5 == 0){
     		printf("%d out of %d timesteps.\n", t, TMAX);
     	}
+    	int dropOrNot = 0;
     	if(t % OUTPUTINTERVAL == 0){ //Create output files every output interval
         	sprintf(filename_experienced_altruism, "%s_expaltr_%04d.txt", run_id, counter);
         	expaltr_file = fopen(filename_experienced_altruism, "w+");
@@ -279,11 +280,6 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
         	fclose(trait_matrix_file);
     	}
 		for (int i = 0; i < population_size_old; i++){
-			if(t == 2499){ //Once equilibrium has been reached, change the altruism level of one of the colonies
-				if(individuals_new[i].label == 80){
-					individuals_new[i].altruism = new_altruism;
-				}
-			}
 			int i_new = i + newborns - deaths; //The index of i in the new timestep, taking into account births and deaths the current timestep
 			if(individuals_new[i_new].offspring != 0){
 				printf("ERROR: Individual in the new state can't have non-zero offspring.\n");
@@ -311,6 +307,19 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
 					//Second: Action:
 					considerMutationAndDevelopment(i_new + 1); //Consider trait mutation and phenotype development of the child
 					moveIndividual(i_new + 1); //Move the child
+				}
+			}
+			if(t == 499){ //Once equilibrium has been reached, change the altruism level of 50 individuals in one of the colonies
+				if(individuals_new[i].label == 51 && dropOrNot < 100){
+					individuals_new[i].altruism = 0.16;
+					individuals_new[i].p = 0.5;
+					double random_phenotype = genrand64_real2();
+					if(random_phenotype < 0.5){
+						individuals_new[i].phenotype = 0;
+					}
+					individuals_new[i].xpos = xCenterPoints[51] + decideRelativePosition(2); //Place all mutants close to the center point so they're all close to each other
+					individuals_new[i].ypos = yCenterPoints[51] + decideRelativePosition(2);
+					dropOrNot += 1;
 				}
 			}
 		}
@@ -821,12 +830,14 @@ void freeMemory(void){
 void printRunInfoToFile(FILE *filename, int timestep){
 	if(timestep == 0){
 		printParametersToFile(filename);
-		fprintf(filename, "Timestep Time Population_size As Bs  Mean_altruism_all Mean_altruism_A Mean_altruism_B Mean_p_all Mean_p_A Mean_p_B\n");
+		fprintf(filename, "Timestep Time Population_size As Bs Number_of_mutants Mutant_colony_size Mean_altruism_all Mean_altruism_A Mean_altruism_B Mean_p_all Mean_p_A Mean_p_B\n");
 	}
 	if(timestep % OUTPUTINTERVAL == 0){
 		double total_altruism = 0; double total_p = 0;
 		double total_altruism_A = 0; double total_p_A = 0;
 		double total_altruism_B = 0; double total_p_B = 0;
+		int mutant_counter = 0;
+		int individuals_in_colony_51 = 0;
 		for(int i = 0; i < population_size_old; i++){
 			total_altruism += individuals_old[i].altruism;
 			total_p += individuals_old[i].p;
@@ -837,11 +848,32 @@ void printRunInfoToFile(FILE *filename, int timestep){
 				total_altruism_B += individuals_old[i].altruism;
 				total_p_B += individuals_old[i].p;
 			}
+			if(individuals_old[i].p == 0.5){
+				mutant_counter += 1;
+			}
+			if(individuals_old[i].label == 51){
+				individuals_in_colony_51 += 1;
+			}
 		}
 		double mean_altruism = total_altruism/population_size_old; double mean_p = total_p/population_size_old;
 		double mean_altruism_A = total_altruism_A/A_counter; double mean_p_A = total_p_A/A_counter;
 		double mean_altruism_B = total_altruism_B/B_counter; double mean_p_B = total_p_B/B_counter;
-		fprintf(filename, "%d %f %d %d %d %f %f %f %f %f %f\n", timestep, timestep*DELTATIME, population_size_old, A_counter, B_counter, mean_altruism, mean_altruism_A, mean_altruism_B, mean_p, mean_p_A, mean_p_B);
+		if(timestep == 500 && mutant_counter == 0){
+			fprintf(filename, "\nError: Failed to place mutants\n");
+			exit(1);
+		}
+		if(timestep > 550 && mean_p == 1.0){
+			//double random = genrand64_real2();
+			//int random_individual = round(random * population_size_new);
+			//individuals_new[random_individual].altruism = 0.16;
+			//individuals_new[random_individual].p = 0.5;
+			//fprintf(filename, "\nA new mutant with lower p and higher altruism has been placed in colony %d\n", individuals_new[random_individual].label);
+			fprintf(filename, "\nMutant with lower p and higher altruism died out!\n");
+			fclose(runinfo_file);
+			fclose(selection_file);
+			exit(1);
+		}
+		fprintf(filename, "%d %f %d %d %d %d %d %f %f %f %f %f %f\n", timestep, timestep*DELTATIME, population_size_old, A_counter, B_counter, mutant_counter, individuals_in_colony_51, mean_altruism, mean_altruism_A, mean_altruism_B, mean_p, mean_p_A, mean_p_B);
 	}
 }
 
