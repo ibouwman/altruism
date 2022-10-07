@@ -224,7 +224,6 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
     		printf("ERROR: The summed number of individuals per phenotype (A: %d, B: %d) doesn't equal the population size (%d)!\n", A_counter, B_counter, population_size_old);
     		exit(1);
     	}
-    	printRunInfoToFile(runinfo_file, t);
     	newborns = 0;
 		deaths = 0;
 		total_delta_altruism_per_timestep = 0;
@@ -232,6 +231,7 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
 		total_delta_p_altruism_product_per_timestep = 0;
     	createLocalDensityMatrix();
     	createExperiencedAltruismMatrix();
+    	printRunInfoToFile(runinfo_file, t);
     	if(t % 5 == 0){
     		printf("%d out of %d timesteps.\n", t, TMAX);
     	}
@@ -758,32 +758,56 @@ void freeMemory(void){
 }
 
 /**
- * Generates a file with basic information about the simulation. Make sure to call countPhenotypes() first!
+ * Generates a file with basic information about the simulation. Make sure to call countPhenotypes() first to have accurate A and B numbers, and createExperiencedAltruismMatrix() to have accurate benefits.
  */
 void printRunInfoToFile(FILE *filename, int timestep){
 	if(timestep == 0){
 		printParametersToFile(filename);
-		fprintf(filename, "Timestep Time Population_size As Bs  Mean_altruism_all Mean_altruism_A Mean_altruism_B Mean_p_all Mean_p_A Mean_p_B\n");
+		fprintf(filename,
+				"Timestep Time Population_size As Bs Mean_altruism_all Mean_altruism_A Mean_altruism_B Mean_p_all Mean_p_A Mean_p_B Mean_cost_all Mean_cost_A Mean_cost_B Mean_benefit_all Mean_benefit_A Mean_benefit_B Mean_pxalt_all Mean_pxalt_A Mean_pxalt_B Covariance_p_altruism Mean_expressed_altruism\n");
 	}
 	if(timestep % OUTPUTINTERVAL == 0){
-		double total_altruism = 0; double total_p = 0;
-		double total_altruism_A = 0; double total_p_A = 0;
-		double total_altruism_B = 0; double total_p_B = 0;
+		double total_altruism = 0; double total_p = 0; double total_cost = 0; double total_benefit = 0; double total_p_times_altruism = 0;
+		double total_altruism_A = 0; double total_p_A = 0; double total_cost_A = 0; double total_benefit_A = 0; double total_p_times_altruism_A = 0;
+		double total_altruism_B = 0; double total_p_B = 0; double total_cost_B = 0; double total_benefit_B = 0; double total_p_times_altruism_B = 0;
 		for(int i = 0; i < population_size_old; i++){
+			double cost = alpha*individuals_old[i].altruism + ((1 - alpha)*kappa*individuals_old[i].altruism)/(kappa + individuals_old[i].altruism);
+			int position = (individuals_new[i].xpos - 1) * N + (individuals_new[i].ypos - 1); //Convert x and y coordinates of individual to find corresponding position in fftw_complex object
+			double local_density = normal_density_convolution[position];
+			double experienced_altruism = normal_altruism_convolution[position];
+			double benefit = (BMAX * experienced_altruism)/((BMAX/B0) + experienced_altruism);
+			double p_times_altruism = individuals_old[i].p * individuals_old[i].altruism;
 			total_altruism += individuals_old[i].altruism;
 			total_p += individuals_old[i].p;
+			total_cost += cost;
+			total_benefit += benefit;
+			total_p_times_altruism += p_times_altruism;
 			if(individuals_old[i].phenotype == 1){
 				total_altruism_A += individuals_old[i].altruism;
 				total_p_A += individuals_old[i].p;
+				total_cost_A += cost;
+				total_benefit_A += benefit;
+				total_p_times_altruism_A += p_times_altruism;
 			}else{
 				total_altruism_B += individuals_old[i].altruism;
 				total_p_B += individuals_old[i].p;
+				total_cost_B += cost;
+				total_benefit_B += benefit;
+				total_p_times_altruism_B += p_times_altruism;
 			}
 		}
 		double mean_altruism = total_altruism/population_size_old; double mean_p = total_p/population_size_old;
+		double mean_cost = total_cost/population_size_old; double mean_benefit = total_benefit/population_size_old; double mean_p_times_altruism = total_p_times_altruism/population_size_old;
 		double mean_altruism_A = total_altruism_A/A_counter; double mean_p_A = total_p_A/A_counter;
+		double mean_cost_A = total_cost_A/A_counter; double mean_benefit_A/A_counter; double mean_p_times_altruism_A = total_p_times_altruism_A/A_counter;
 		double mean_altruism_B = total_altruism_B/B_counter; double mean_p_B = total_p_B/B_counter;
-		fprintf(filename, "%d %f %d %d %d %f %f %f %f %f %f\n", timestep, timestep*DELTATIME, population_size_old, A_counter, B_counter, mean_altruism, mean_altruism_A, mean_altruism_B, mean_p, mean_p_A, mean_p_B);
+		double mean_cost_B = total_cost_B/B_counter; double mean_benefit_B/B_counter; double mean_p_times_altruism_B = total_p_times_altruism_B/B_counter;
+		double covariance_p_altruism = mean_p_times_altruism - (mean_p * mean_altruism);
+		double mean_expressed_altruism = mean_altruism_A/population_size_old;
+		fprintf(filename, "%d %f %d %d %d %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f\n", timestep, timestep*DELTATIME, population_size_old, A_counter, B_counter,
+				mean_altruism, mean_altruism_A, mean_altruism_B, mean_p, mean_p_A, mean_p_B,
+				mean_cost, mean_cost_A, mean_cost_B, mean_benefit, mean_benefit_A, mean_benefit_B,
+				mean_p_times_altruism, mean_p_times_altruism_A, mean_p_times_altruism_B, covariance_p_altruism, mean_expressed_altruism);
 	}
 }
 
