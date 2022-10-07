@@ -771,7 +771,7 @@ void printRunInfoToFile(FILE *filename, int timestep){
 		double total_altruism_A = 0; double total_p_A = 0; double total_cost_A = 0; double total_benefit_A = 0; double total_p_times_altruism_A = 0;
 		double total_altruism_B = 0; double total_p_B = 0; double total_cost_B = 0; double total_benefit_B = 0; double total_p_times_altruism_B = 0;
 		for(int i = 0; i < population_size_old; i++){
-			double cost = alpha*individuals_old[i].altruism + ((1 - alpha)*kappa*individuals_old[i].altruism)/(kappa + individuals_old[i].altruism);
+			double cost = individuals_old[i].phenotype * (alpha*individuals_old[i].altruism + ((1 - alpha)*kappa*individuals_old[i].altruism)/(kappa + individuals_old[i].altruism));
 			int position = (individuals_new[i].xpos - 1) * N + (individuals_new[i].ypos - 1); //Convert x and y coordinates of individual to find corresponding position in fftw_complex object
 			double local_density = normal_density_convolution[position];
 			double experienced_altruism = normal_altruism_convolution[position];
