@@ -74,6 +74,7 @@ double sumMatrix(fftw_complex*);
 #define DELTASPACE 0.1 //Size of a position. This equals 1/resolution in the Fortran code.
 #define STEADYSTATEDENSITY (1 - DEATHRATE/BIRTHRATE) * K
 #define GRIDSIZE (N * DELTASPACE) * (N * DELTASPACE) //Actual size of the grid, not in terms of DELTASPACE
+#define INITIALALTRUISM 0.08
 #define INITIALP 1.0 //Initial probability that offspring will have phenotype A
 #define THRESHOLD 0.0000000001 //Numbers lower than this are set to 0
 #define NBINSALTRUISM 10
@@ -109,8 +110,6 @@ struct Individual {
 //Declare global variables TODO: Put in some order
 double alpha;
 double kappa;
-double initial_altruism;
-double new_altruism;
 int population_size_old;
 int population_size_new;
 int colony_size_old;
@@ -196,19 +195,16 @@ char filename_runinfo[50];
 char filename_selection[50];
 
 //Main
-int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid, initial altruism, new altruism (the level of altruism one colony gets after some time)
+int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
 	clock_t start = clock();
 	time_t tm;
 	time(&tm);
 	printf("Running %s track-colonies branch. Started at %s\n", __FILE__, ctime(&tm));
 	printf("User-defined parameters are:\n");
-	printf("alpha = %s\n kappa = %s\n runid = %s\n initial altruism = %s\n new altruism = %s\n", argv[1], argv[2], argv[3], argv[4], argv[5]);
-	printf("runid = %s\n", argv[3]);
+	printf("alpha = %s\n kappa = %s\n runid = %s\n", argv[1], argv[2], argv[3]);
 	alpha = atof(argv[1]);
 	kappa = atof(argv[2]);
 	char *run_id = argv[3];
-	initial_altruism = atof(argv[4]);
-	new_altruism = atof(argv[5]);
 	init_genrand64(time(0)); //Use time(0) for different numbers every run (not reproducible!), or use e.g. 1 for reproducible results
 	uint32_t jsr_value = 123456789; //Values taken from ziggurat_inline_test.c (available online)
 	uint32_t jcong_value = 234567891;
@@ -254,7 +250,7 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
     	}
     	int dropOrNot = 0;
     	if(t % OUTPUTINTERVAL == 0){ //Create output files every output interval
-        	sprintf(filename_experienced_altruism, "%s_expaltr_%04d.txt", run_id, counter);
+        	/*sprintf(filename_experienced_altruism, "%s_expaltr_%04d.txt", run_id, counter);
         	expaltr_file = fopen(filename_experienced_altruism, "w+");
         	sprintf(filename_density, "%s_density_%04d.txt", run_id, counter);
         	density_file = fopen(filename_density, "w+");
@@ -275,8 +271,8 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
         	sprintf(filename_summed_p_B, "%s_sumpB_%04d.txt", run_id, counter);
         	sump_file_B = fopen(filename_summed_p_B, "w+");
         	sprintf(filename_trait_matrix, "%s_traitmatrix_%04d.txt", run_id, counter);
-        	trait_matrix_file = fopen(filename_trait_matrix, "w+");
-        	counter++;
+        	trait_matrix_file = fopen(filename_trait_matrix, "w+");*/
+        	/*counter++;
         	printExperiencedAltruismMatrixToFile();
         	printDensityMatrixToFile();
         	printSummedAltruismMatrixToFile();
@@ -286,7 +282,7 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
         	fclose(density_file); fclose(density_file_A); fclose(density_file_B);
         	fclose(sumaltr_file); fclose(sumaltr_file_A); fclose(sumaltr_file_B);
         	fclose(sump_file); fclose(sump_file_A); fclose(sump_file_B);
-        	fclose(trait_matrix_file);
+        	fclose(trait_matrix_file);*/
     	}
 		for (int i = 0; i < population_size_old; i++){
 			int i_new = i + newborns - deaths; //The index of i in the new timestep, taking into account births and deaths the current timestep
@@ -446,7 +442,7 @@ void makeIndividuals(){ //TODO: Make colony placement more robust (replace hard-
 		int colonyIndex = round(random_colony * 187); //188 colonies so max index is 187
 		individuals_old[i].xpos = xCenterPoints[colonyIndex] + decideRelativePosition(20);
 		individuals_old[i].ypos = yCenterPoints[colonyIndex] + decideRelativePosition(20);
-		individuals_old[i].altruism = initial_altruism;
+		individuals_old[i].altruism = INITIALALTRUISM;
 		individuals_old[i].p = INITIALP;
 		individuals_old[i].phenotype = 1; //Initially, all individuals are A
 		individuals_old[i].offspring = 0;
@@ -875,7 +871,7 @@ void printRunInfoToFile(FILE *filename, int timestep){
 				total_p_colony += individuals_old[i].p;
 				double fitness = (individuals_old[i].offspring * relative_fitness);
 				total_fitness_colony += fitness;
-				total_p_times_fitness_colony += (individuals[i].p * fitness);
+				total_p_times_fitness_colony += (individuals_old[i].p * fitness);
 			}
 		}
 		double mean_p_colony = total_p_colony/colony_size_old;
@@ -895,7 +891,7 @@ void printRunInfoToFile(FILE *filename, int timestep){
 			fclose(selection_file);
 			exit(1);
 		}
-		fprintf(filename, "%d %f %d %d %d %d %d %f %f %f %f %f %f %f\n", timestep, timestep*DELTATIME, population_size_old, A_counter, B_counter, mutant_counter, individuals_in_colony_51, mean_altruism, mean_altruism_A, mean_altruism_B, mean_p, mean_p_A, mean_p_B, covariance_p_fitness_colony);
+		fprintf(filename, "%d %f %d %d %d %d %d %f %f %f %f %f %f %f\n", timestep, timestep*DELTATIME, population_size_old, A_counter, B_counter, mutant_counter, colony_size_old, mean_altruism, mean_altruism_A, mean_altruism_B, mean_p, mean_p_A, mean_p_B, covariance_p_fitness_colony);
 	}
 }
 
@@ -923,8 +919,7 @@ void printParametersToFile(FILE *filename){
 	fprintf(filename, "DeltaSpace = %f\n", DELTASPACE);
 	fprintf(filename, "Initial population size = %d\n", INITIALPOPULATIONSIZE);
 	fprintf(filename, "Number of positions = %d\n", NPOS);
-	fprintf(filename, "Initial altruism level = %f\n", initial_altruism);
-	fprintf(filename, "New altruism level = %f\n", new_altruism);
+	fprintf(filename, "Initial altruism level = %f\n", INITIALALTRUISM);
 	fprintf(filename, "Initial p = %f\n", INITIALP);
 	fprintf(filename, "Death rate = %f\n", DEATHRATE);
 	fprintf(filename, "Birth rate = %f\n", BIRTHRATE);
