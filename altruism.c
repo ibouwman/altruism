@@ -847,7 +847,7 @@ void freeMemory(void){
 void printRunInfoToFile(FILE *filename, int timestep){
 	if(timestep == 0){
 		printParametersToFile(filename);
-		fprintf(filename, "Timestep Time Population_size As Bs Number_of_mutants Mutant_colony_size Mean_altruism_all Mean_altruism_A Mean_altruism_B Mean_p_all Mean_p_A Mean_p_B\n");
+		fprintf(filename, "Timestep Time Population_size As Bs Number_of_mutants Mutant_colony_size Mean_altruism_all Mean_altruism_A Mean_altruism_B Mean_p_all Mean_p_A Mean_p_B Cov_p_fitness_colony\n");
 	}
 	if(timestep % OUTPUTINTERVAL == 0){
 		double total_altruism = 0; double total_p = 0;
@@ -895,7 +895,7 @@ void printRunInfoToFile(FILE *filename, int timestep){
 			fclose(selection_file);
 			exit(1);
 		}
-		fprintf(filename, "%d %f %d %d %d %d %d %f %f %f %f %f %f\n", timestep, timestep*DELTATIME, population_size_old, A_counter, B_counter, mutant_counter, individuals_in_colony_51, mean_altruism, mean_altruism_A, mean_altruism_B, mean_p, mean_p_A, mean_p_B);
+		fprintf(filename, "%d %f %d %d %d %d %d %f %f %f %f %f %f %f\n", timestep, timestep*DELTATIME, population_size_old, A_counter, B_counter, mutant_counter, individuals_in_colony_51, mean_altruism, mean_altruism_A, mean_altruism_B, mean_p, mean_p_A, mean_p_B, covariance_p_fitness_colony);
 	}
 }
 
