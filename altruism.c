@@ -772,7 +772,7 @@ void printRunInfoToFile(FILE *filename, int timestep){
 		double total_altruism_B = 0; double total_p_B = 0; double total_cost_B = 0; double total_benefit_B = 0; double total_p_times_altruism_B = 0;
 		for(int i = 0; i < population_size_old; i++){
 			double cost = individuals_old[i].phenotype * (alpha*individuals_old[i].altruism + ((1 - alpha)*kappa*individuals_old[i].altruism)/(kappa + individuals_old[i].altruism));
-			int position = (individuals_new[i].xpos - 1) * N + (individuals_new[i].ypos - 1); //Convert x and y coordinates of individual to find corresponding position in fftw_complex object
+			int position = (individuals_old[i].xpos - 1) * N + (individuals_old[i].ypos - 1); //Convert x and y coordinates of individual to find corresponding position in fftw_complex object
 			double local_density = normal_density_convolution[position];
 			double experienced_altruism = normal_altruism_convolution[position];
 			double benefit = (BMAX * experienced_altruism)/((BMAX/B0) + experienced_altruism);
@@ -799,9 +799,9 @@ void printRunInfoToFile(FILE *filename, int timestep){
 		double mean_altruism = total_altruism/population_size_old; double mean_p = total_p/population_size_old;
 		double mean_cost = total_cost/population_size_old; double mean_benefit = total_benefit/population_size_old; double mean_p_times_altruism = total_p_times_altruism/population_size_old;
 		double mean_altruism_A = total_altruism_A/A_counter; double mean_p_A = total_p_A/A_counter;
-		double mean_cost_A = total_cost_A/A_counter; double mean_benefit_A/A_counter; double mean_p_times_altruism_A = total_p_times_altruism_A/A_counter;
+		double mean_cost_A = total_cost_A/A_counter; double mean_benefit_A = total_benefit_A/A_counter; double mean_p_times_altruism_A = total_p_times_altruism_A/A_counter;
 		double mean_altruism_B = total_altruism_B/B_counter; double mean_p_B = total_p_B/B_counter;
-		double mean_cost_B = total_cost_B/B_counter; double mean_benefit_B/B_counter; double mean_p_times_altruism_B = total_p_times_altruism_B/B_counter;
+		double mean_cost_B = total_cost_B/B_counter; double mean_benefit_B = total_benefit_B/B_counter; double mean_p_times_altruism_B = total_p_times_altruism_B/B_counter;
 		double covariance_p_altruism = mean_p_times_altruism - (mean_p * mean_altruism);
 		double mean_expressed_altruism = mean_altruism_A/population_size_old;
 		fprintf(filename, "%d %f %d %d %d %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f\n", timestep, timestep*DELTATIME, population_size_old, A_counter, B_counter,
