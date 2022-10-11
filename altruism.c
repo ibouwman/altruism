@@ -5,6 +5,12 @@
  *      Author: Irene Bouwman
  */
 
+/*
+ * In this branch, the grid is filled with 188 colonies before the simulation starts. Each colony has a label, so the traits of the individuals in the colony can be tracked.
+ * After a number of timesteps, a cluster of 100 individuals (ca. 5% of the colony) with different values of p and altruism is placed in the middle of one of the colonies.
+ * Note: This branch has many hard-coded values. Beware of that when adapting the simulation or replace them by (perhaps user-defined?) parameters.
+ */
+
 //Include
 #include <stdint.h>
 #include <stdio.h>
@@ -107,6 +113,8 @@ double initial_altruism;
 double new_altruism;
 int population_size_old;
 int population_size_new;
+int colony_size_old;
+int colony_size_new;
 fftw_complex* normal_for_density;
 fftw_complex* normal_for_density_forward;
 fftw_complex* normal_for_altruism;
@@ -215,9 +223,10 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
 	fftw_execute(fftw_plan_normal_for_density_forward);
 	fftw_execute(fftw_plan_normal_for_altruism_forward);
 	printf("Creating individuals...\n");
-	makeIndividuals();
+	makeIndividuals(); //colony_size_old is defined in this function
 	population_size_old = INITIALPOPULATIONSIZE;
 	population_size_new = 0;
+	colony_size_new = 0;
 	int counter = 1; //Counter for file naming
 	sprintf(filename_runinfo, "%s_runinfo.txt", run_id);
 	runinfo_file = fopen(filename_runinfo, "w+");
@@ -308,6 +317,9 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
 					considerMutationAndDevelopment(i_new + 1); //Consider trait mutation and phenotype development of the child
 					moveIndividual(i_new + 1); //Move the child
 				}
+			}
+			if(individuals_new[i].label == 51){
+				colony_size_new += 1;
 			}
 			if(t == 499){ //Once equilibrium has been reached, change the altruism level of 50 individuals in one of the colonies
 				if(individuals_new[i].label == 51 && dropOrNot < 100){
@@ -439,6 +451,9 @@ void makeIndividuals(){ //TODO: Make colony placement more robust (replace hard-
 		individuals_old[i].phenotype = 1; //Initially, all individuals are A
 		individuals_old[i].offspring = 0;
 		individuals_old[i].label = colonyIndex;
+		if(individuals_old[i].label == 51){
+			colony_size_old += 1;
+		}
 	}
 }
 
@@ -764,6 +779,8 @@ void updateStates(){
 	*individuals_new_ptr = temp; //Reset the new individuals for the next state by pointing to the block with 0s
 	population_size_old = population_size_new; //Switch to new state, including all individuals that were born or didn't die in the previous timestep
 	population_size_new = 0; //Reset value of new state population size
+	colony_size_old = colony_size_new;
+	colony_size_new = 0;
 	memset(density_A, 0, NPOS * sizeof(*density_A));
 	memset(density_B, 0, NPOS * sizeof(*density_B));
 	memset(sumaltr, 0, NPOS * sizeof(*sumaltr));
@@ -837,7 +854,9 @@ void printRunInfoToFile(FILE *filename, int timestep){
 		double total_altruism_A = 0; double total_p_A = 0;
 		double total_altruism_B = 0; double total_p_B = 0;
 		int mutant_counter = 0;
-		int individuals_in_colony_51 = 0;
+		double total_p_colony = 0;
+		double total_fitness_colony = 0;
+		double total_p_times_fitness_colony = 0;
 		for(int i = 0; i < population_size_old; i++){
 			total_altruism += individuals_old[i].altruism;
 			total_p += individuals_old[i].p;
@@ -851,23 +870,26 @@ void printRunInfoToFile(FILE *filename, int timestep){
 			if(individuals_old[i].p == 0.5){
 				mutant_counter += 1;
 			}
+			double relative_fitness = (double)colony_size_old/(double)colony_size_new;
 			if(individuals_old[i].label == 51){
-				individuals_in_colony_51 += 1;
+				total_p_colony += individuals_old[i].p;
+				double fitness = (individuals_old[i].offspring * relative_fitness);
+				total_fitness_colony += fitness;
+				total_p_times_fitness_colony += (individuals[i].p * fitness);
 			}
 		}
+		double mean_p_colony = total_p_colony/colony_size_old;
+		double mean_fitness_colony = total_fitness_colony/colony_size_old;
+		double mean_p_times_fitness_colony = total_p_times_fitness_colony/colony_size_old;
 		double mean_altruism = total_altruism/population_size_old; double mean_p = total_p/population_size_old;
 		double mean_altruism_A = total_altruism_A/A_counter; double mean_p_A = total_p_A/A_counter;
 		double mean_altruism_B = total_altruism_B/B_counter; double mean_p_B = total_p_B/B_counter;
+		double covariance_p_fitness_colony = mean_p_times_fitness_colony - (mean_p_colony * mean_fitness_colony);
 		if(timestep == 500 && mutant_counter == 0){
 			fprintf(filename, "\nError: Failed to place mutants\n");
 			exit(1);
 		}
 		if(timestep > 550 && mean_p == 1.0){
-			//double random = genrand64_real2();
-			//int random_individual = round(random * population_size_new);
-			//individuals_new[random_individual].altruism = 0.16;
-			//individuals_new[random_individual].p = 0.5;
-			//fprintf(filename, "\nA new mutant with lower p and higher altruism has been placed in colony %d\n", individuals_new[random_individual].label);
 			fprintf(filename, "\nMutant with lower p and higher altruism died out!\n");
 			fclose(runinfo_file);
 			fclose(selection_file);
