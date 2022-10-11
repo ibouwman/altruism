@@ -59,8 +59,8 @@ double sumMatrix(fftw_complex*);
 
 //Define parameters and settings, following 2D/parameters in the Fortran code (and Table 1 of the paper)
 //Settings
-#define TMAX 100001
-#define OUTPUTINTERVAL 1250 //Number of timesteps between each output print
+#define TMAX 5000001
+#define OUTPUTINTERVAL 62500 //Number of timesteps between each output print
 #define FIELDS 7 //Number of fields to take into account (in each direction) when creating the normal kernel
 #define DELTATIME 0.08 //Multiply rate by DELTATIME to get probability per timestep
 #define DELTASPACE 0.1 //Size of a position. This equals 1/resolution in the Fortran code.
@@ -75,7 +75,7 @@ double sumMatrix(fftw_complex*);
 #define BIRTHRATE 5.0 //Baseline max birth rate
 #define DEATHRATE 1.0
 #define MUTATIONPROBABILITYPRODUCTION 0.001
-#define MUTATIONPROBABILITYP 0.005
+#define MUTATIONPROBABILITYP 0.001
 #define MEANMUTSIZEPRODUCTION 0.005
 #define MEANMUTSIZEP 0.005
 #define ALTRUISMSCALE 1
@@ -257,19 +257,19 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
         	sump_file_A = fopen(filename_summed_p_A, "w+");
         	sprintf(filename_summed_p_B, "%s_sumpB_%04d.txt", run_id, counter);
         	sump_file_B = fopen(filename_summed_p_B, "w+");
-        	sprintf(filename_trait_matrix, "%s_traitmatrix_%04d.txt", run_id, counter);
-        	trait_matrix_file = fopen(filename_trait_matrix, "w+");
+        	//sprintf(filename_trait_matrix, "%s_traitmatrix_%04d.txt", run_id, counter);
+        	//trait_matrix_file = fopen(filename_trait_matrix, "w+");
         	counter++;
         	printExperiencedAltruismMatrixToFile();
         	printDensityMatrixToFile();
         	printSummedAltruismMatrixToFile();
         	printSummedPmatrixToFile();
-        	printTraitMatrixToFile(NBINSALTRUISM, NBINSP, 0.01, 0.1); //TODO: Think about global/local variables, or adding maxvalue for p or altruism instead of binsize
+        	//printTraitMatrixToFile(NBINSALTRUISM, NBINSP, 0.01, 0.1); //TODO: Think about global/local variables, or adding maxvalue for p or altruism instead of binsize
         	fclose(expaltr_file);
         	fclose(density_file); fclose(density_file_A); fclose(density_file_B);
         	fclose(sumaltr_file); fclose(sumaltr_file_A); fclose(sumaltr_file_B);
         	fclose(sump_file); fclose(sump_file_A); fclose(sump_file_B);
-        	fclose(trait_matrix_file);
+        	//fclose(trait_matrix_file);
     	}
 		for (int i = 0; i < population_size_old; i++){
 			int i_new = i + newborns - deaths; //The index of i in the new timestep, taking into account births and deaths the current timestep
@@ -774,7 +774,7 @@ void printRunInfoToFile(FILE *filename, int timestep){
 		double total_altruism_B = 0; double total_p_B = 0; double total_cost_B = 0; double total_benefit_B = 0; double total_production_B = 0;
 		for(int i = 0; i < population_size_old; i++){
 			double cost = individuals_old[i].phenotype * (alpha*individuals_old[i].altruism + ((1 - alpha)*kappa*individuals_old[i].altruism)/(kappa + individuals_old[i].altruism)); //Only As can pay a non-zero cost
-			int position = (individuals_new[i].xpos - 1) * N + (individuals_new[i].ypos - 1); //Convert x and y coordinates of individual to find corresponding position in fftw_complex object
+			int position = (individuals_old[i].xpos - 1) * N + (individuals_old[i].ypos - 1); //Convert x and y coordinates of individual to find corresponding position in fftw_complex object
 			double local_density = normal_density_convolution[position];
 			double experienced_altruism = normal_altruism_convolution[position];
 			double benefit = (BMAX * experienced_altruism)/((BMAX/B0) + experienced_altruism);
@@ -800,9 +800,9 @@ void printRunInfoToFile(FILE *filename, int timestep){
 		double mean_altruism = total_altruism/population_size_old; double mean_p = total_p/population_size_old;
 		double mean_cost = total_cost/population_size_old; double mean_benefit = total_benefit/population_size_old; double mean_production = total_production/population_size_old;
 		double mean_altruism_A = total_altruism_A/A_counter; double mean_p_A = total_p_A/A_counter;
-		double mean_cost_A = total_cost_A/A_counter; double mean_benefit_A/A_counter; double mean_production_A = total_production_A/A_counter;
+		double mean_cost_A = total_cost_A/A_counter; double mean_benefit_A = total_benefit_A/A_counter; double mean_production_A = total_production_A/A_counter;
 		double mean_altruism_B = total_altruism_B/B_counter; double mean_p_B = total_p_B/B_counter;
-		double mean_cost_B = total_cost_B/B_counter; double mean_benefit_B/B_counter; double mean_production_B = total_production_B/B_counter;
+		double mean_cost_B = total_cost_B/B_counter; double mean_benefit_B = total_benefit_B/B_counter; double mean_production_B = total_production_B/B_counter;
 		double covariance_p_altruism = mean_production - (mean_p * mean_altruism); //production = p*altruism, so mean production = mean(p*altruism)
 		double mean_expressed_altruism = mean_altruism_A/population_size_old;
 		fprintf(filename, "%d %f %d %d %d %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f\n", timestep, timestep*DELTATIME, population_size_old, A_counter, B_counter,
