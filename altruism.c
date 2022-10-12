@@ -803,7 +803,7 @@ void printRunInfoToFile(FILE *filename, int timestep){
 		double mean_altruism_B = total_altruism_B/B_counter; double mean_p_B = total_p_B/B_counter;
 		double mean_cost_B = total_cost_B/B_counter; double mean_benefit_B = total_benefit_B/B_counter; double mean_p_times_altruism_B = total_p_times_altruism_B/B_counter;
 		double covariance_p_altruism = mean_p_times_altruism - (mean_p * mean_altruism);
-		double mean_expressed_altruism = mean_altruism_A/population_size_old;
+		double mean_expressed_altruism = total_altruism_A/population_size_old;
 		fprintf(filename, "%d %f %d %d %d %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f\n", timestep, timestep*DELTATIME, population_size_old, A_counter, B_counter,
 				mean_altruism, mean_altruism_A, mean_altruism_B, mean_p, mean_p_A, mean_p_B,
 				mean_cost, mean_cost_A, mean_cost_B, mean_benefit, mean_benefit_A, mean_benefit_B,
