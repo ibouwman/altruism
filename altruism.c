@@ -7,7 +7,7 @@
 
 /*
  * In this branch, the grid is filled with 188 colonies before the simulation starts. Each colony has a label, so the traits of the individuals in the colony can be tracked.
- * After a number of timesteps, a cluster of 100 individuals (ca. 5% of the colony) with different values of p and altruism is placed in the middle of one of the colonies.
+ * One of the colonies has a different level of altruism and p than the other colonies: the level of altruism is twice as high, while p is twice as low.
  * Note: This branch has many hard-coded values. Beware of that when adapting the simulation or replace them by (perhaps user-defined?) parameters.
  */
 
@@ -251,7 +251,6 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
     	if(t % 5 == 0){
     		printf("%d out of %d timesteps.\n", t, TMAX);
     	}
-    	int dropOrNot = 0;
     	if(t % OUTPUTINTERVAL == 0){ //Create output files every output interval
         	/*sprintf(filename_experienced_altruism, "%s_expaltr_%04d.txt", run_id, counter);
         	expaltr_file = fopen(filename_experienced_altruism, "w+");
@@ -323,25 +322,12 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
 					moveIndividual(i_new + 1); //Move the child
 				}
 			}
-			if(t == 499){ //Once equilibrium has been reached, change the altruism level of 50 individuals in one of the colonies
-				if(individuals_new[i_new].label == 51 && dropOrNot < 100){
-					individuals_new[i_new].altruism = 0.16;
-					individuals_new[i_new].p = 0.5;
-					double random_phenotype = genrand64_real2();
-					if(random_phenotype < 0.5){
-						individuals_new[i_new].phenotype = 0;
-					}
-					individuals_new[i_new].xpos = xCenterPoints[51] + decideRelativePosition(2); //Place all mutants close to the center point so they're all close to each other
-					individuals_new[i_new].ypos = yCenterPoints[51] + decideRelativePosition(2);
-					dropOrNot += 1;
-				}
-			}
 		}
     	checkPopulationSize(t);
     	calculateSelection();
     	calculateTransmission();
     	if(t % OUTPUTINTERVAL == 0){
-        	calculateCovariance(); //Calculate the covariance between p and fitness within the colony of interest. This is also printed to the selection file.
+        	//calculateCovariance(); //Calculate the covariance between p and fitness within the colony of interest. This is also printed to the selection file.
         	printSelectionToFile(selection_file, t);
     	}
     	updateStates(); //New state becomes old state
@@ -456,6 +442,8 @@ void makeIndividuals(){ //TODO: Make colony placement more robust (replace hard-
 		individuals_old[i].label = colonyIndex;
 		if(individuals_old[i].label == 51){
 			colony_size_old += 1;
+			individuals_old[i].p = 0.5*INITIALP;
+			individuals_old[i].altruism = 2*INITIALALTRUISM;
 		}
 	}
 }
@@ -920,9 +908,9 @@ void printRunInfoToFile(FILE *filename, int timestep){
  */
 void printSelectionToFile(FILE *filename, int timestep){
 	if(timestep == 0){
-		fprintf(filename, "Timestep Time cumulativeSelectionP cumulativeTransmissionP cumulativeSelectionAltruism cumulativeTransmissionAltruism cumulativeSelectionProduct cumulativeTransmissionProduct covariancePandFitnessColony\n");
+		fprintf(filename, "Timestep Time cumulativeSelectionP cumulativeTransmissionP cumulativeSelectionAltruism cumulativeTransmissionAltruism cumulativeSelectionProduct cumulativeTransmissionProduct\n");
 	}
-	fprintf(filename, "%d %f %f %f %f %f %f %f %f\n", timestep, timestep*DELTATIME, cumulative_selection_p, cumulative_transmission_p, cumulative_selection_altruism, cumulative_transmission_altruism, cumulative_selection_p_altruism_product, cumulative_transmission_p_altruism_product, covariance_p_fitness_colony);
+	fprintf(filename, "%d %f %f %f %f %f %f %f\n", timestep, timestep*DELTATIME, cumulative_selection_p, cumulative_transmission_p, cumulative_selection_altruism, cumulative_transmission_altruism, cumulative_selection_p_altruism_product, cumulative_transmission_p_altruism_product);
 }
 
 /**
