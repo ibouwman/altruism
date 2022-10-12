@@ -45,6 +45,7 @@ void countPhenotypes(void);
 void checkPopulationSize(int);
 void calculateSelection(void);
 void calculateTransmission(void);
+void calculateCovariance(void);
 void updateStates(void);
 void destroyFFTWplans(void);
 void freeMemory(void);
@@ -114,6 +115,7 @@ int population_size_old;
 int population_size_new;
 int colony_size_old;
 int colony_size_new;
+double covariance_p_fitness_colony;
 fftw_complex* normal_for_density;
 fftw_complex* normal_for_density_forward;
 fftw_complex* normal_for_altruism;
@@ -223,6 +225,7 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
 	population_size_old = INITIALPOPULATIONSIZE;
 	population_size_new = 0;
 	colony_size_new = 0;
+	covariance_p_fitness_colony = 0;
 	int counter = 1; //Counter for file naming
 	sprintf(filename_runinfo, "%s_runinfo.txt", run_id);
 	runinfo_file = fopen(filename_runinfo, "w+");
@@ -299,6 +302,9 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
 				individuals_new[i_new] = individuals_old[i];
 				individuals_old[i].offspring += 1; //Update offspring for the 'old' state, to calculate selection
 				population_size_new += 1;
+				if(individuals_new[i_new].label == 51){
+					colony_size_new += 1;
+				}
 				double birth_rate = calculateBirthRate(i_new);
 				//Second: Action:
 				moveIndividual(i_new); //...Move it
@@ -307,6 +313,9 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
 					individuals_new[i_new + 1] = individuals_old[i]; //Initially child = parent
 					individuals_new[i_new + 1].offspring = 0; //But with offspring 0
 					population_size_new += 1; //Add child to the population size of the next timestep
+					if(individuals_new[i_new + 1].label == 51){
+						colony_size_new += 1;
+					}
 					newborns += 1; //Add child to the newborns of this timestep
 					individuals_old[i].offspring += 1; //Update offspring of the parent for the 'old' state
 					//Second: Action:
@@ -314,19 +323,16 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
 					moveIndividual(i_new + 1); //Move the child
 				}
 			}
-			if(individuals_new[i].label == 51){
-				colony_size_new += 1;
-			}
 			if(t == 499){ //Once equilibrium has been reached, change the altruism level of 50 individuals in one of the colonies
-				if(individuals_new[i].label == 51 && dropOrNot < 100){
-					individuals_new[i].altruism = 0.16;
-					individuals_new[i].p = 0.5;
+				if(individuals_new[i_new].label == 51 && dropOrNot < 100){
+					individuals_new[i_new].altruism = 0.16;
+					individuals_new[i_new].p = 0.5;
 					double random_phenotype = genrand64_real2();
 					if(random_phenotype < 0.5){
-						individuals_new[i].phenotype = 0;
+						individuals_new[i_new].phenotype = 0;
 					}
-					individuals_new[i].xpos = xCenterPoints[51] + decideRelativePosition(2); //Place all mutants close to the center point so they're all close to each other
-					individuals_new[i].ypos = yCenterPoints[51] + decideRelativePosition(2);
+					individuals_new[i_new].xpos = xCenterPoints[51] + decideRelativePosition(2); //Place all mutants close to the center point so they're all close to each other
+					individuals_new[i_new].ypos = yCenterPoints[51] + decideRelativePosition(2);
 					dropOrNot += 1;
 				}
 			}
@@ -335,6 +341,7 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
     	calculateSelection();
     	calculateTransmission();
     	if(t % OUTPUTINTERVAL == 0){
+        	calculateCovariance(); //Calculate the covariance between p and fitness within the colony of interest. This is also printed to the selection file.
         	printSelectionToFile(selection_file, t);
     	}
     	updateStates(); //New state becomes old state
@@ -705,6 +712,10 @@ void checkPopulationSize(int t){
 		printf("\n%d individuals left in next timestep. Population died out at t = %d!\n", population_size_new, t);
 		exit(1);
 	}
+	if(colony_size_new == 0){
+		printf("\nNo individuals left in colony of interest for the next timestep! Colony died out at t = %d\n", t);
+		exit(1);
+	}
 }
 
 /**
@@ -764,6 +775,28 @@ void calculateTransmission(void){
 }
 
 /**
+ * Calculates the covariance between p and fitness within the labeled colony for a single timestep.
+ */
+void calculateCovariance(void){
+	double total_p_colony = 0;
+	double total_fitness_colony = 0;
+	double total_p_times_fitness_colony = 0;
+	double relative_fitness = (double)colony_size_old/(double)colony_size_new;
+	for(int i = 0; i < population_size_old; i++){
+		if(individuals_old[i].label == 51){
+			total_p_colony += individuals_old[i].p;
+			double fitness = (individuals_old[i].offspring * relative_fitness);
+			total_fitness_colony += fitness;
+			total_p_times_fitness_colony += (individuals_old[i].p * fitness);
+		}
+	}
+	double mean_p_colony = total_p_colony/colony_size_old;
+	double mean_fitness_colony = total_fitness_colony/colony_size_old;
+	double mean_p_times_fitness_colony = total_p_times_fitness_colony/colony_size_old;
+	covariance_p_fitness_colony = mean_p_times_fitness_colony - (mean_p_colony * mean_fitness_colony);
+}
+
+/**
  * Updates the old and new state for the next timestep, i.e. old individuals are replaced by new individuals. Resets all pointers with timestep-specific information.
  */
 void updateStates(){
@@ -777,6 +810,7 @@ void updateStates(){
 	population_size_new = 0; //Reset value of new state population size
 	colony_size_old = colony_size_new;
 	colony_size_new = 0;
+	covariance_p_fitness_colony = 0;
 	memset(density_A, 0, NPOS * sizeof(*density_A));
 	memset(density_B, 0, NPOS * sizeof(*density_B));
 	memset(sumaltr, 0, NPOS * sizeof(*sumaltr));
@@ -850,9 +884,6 @@ void printRunInfoToFile(FILE *filename, int timestep){
 		double total_altruism_A = 0; double total_p_A = 0;
 		double total_altruism_B = 0; double total_p_B = 0;
 		int mutant_counter = 0;
-		double total_p_colony = 0;
-		double total_fitness_colony = 0;
-		double total_p_times_fitness_colony = 0;
 		for(int i = 0; i < population_size_old; i++){
 			total_altruism += individuals_old[i].altruism;
 			total_p += individuals_old[i].p;
@@ -866,21 +897,10 @@ void printRunInfoToFile(FILE *filename, int timestep){
 			if(individuals_old[i].p == 0.5){
 				mutant_counter += 1;
 			}
-			double relative_fitness = (double)colony_size_old/(double)colony_size_new;
-			if(individuals_old[i].label == 51){
-				total_p_colony += individuals_old[i].p;
-				double fitness = (individuals_old[i].offspring * relative_fitness);
-				total_fitness_colony += fitness;
-				total_p_times_fitness_colony += (individuals_old[i].p * fitness);
-			}
 		}
-		double mean_p_colony = total_p_colony/colony_size_old;
-		double mean_fitness_colony = total_fitness_colony/colony_size_old;
-		double mean_p_times_fitness_colony = total_p_times_fitness_colony/colony_size_old;
 		double mean_altruism = total_altruism/population_size_old; double mean_p = total_p/population_size_old;
 		double mean_altruism_A = total_altruism_A/A_counter; double mean_p_A = total_p_A/A_counter;
 		double mean_altruism_B = total_altruism_B/B_counter; double mean_p_B = total_p_B/B_counter;
-		double covariance_p_fitness_colony = mean_p_times_fitness_colony - (mean_p_colony * mean_fitness_colony);
 		if(timestep == 500 && mutant_counter == 0){
 			fprintf(filename, "\nError: Failed to place mutants\n");
 			exit(1);
@@ -891,18 +911,18 @@ void printRunInfoToFile(FILE *filename, int timestep){
 			fclose(selection_file);
 			exit(1);
 		}
-		fprintf(filename, "%d %f %d %d %d %d %d %f %f %f %f %f %f %f\n", timestep, timestep*DELTATIME, population_size_old, A_counter, B_counter, mutant_counter, colony_size_old, mean_altruism, mean_altruism_A, mean_altruism_B, mean_p, mean_p_A, mean_p_B, covariance_p_fitness_colony);
+		fprintf(filename, "%d %f %d %d %d %d %d %f %f %f %f %f %f\n", timestep, timestep*DELTATIME, population_size_old, A_counter, B_counter, mutant_counter, colony_size_old, mean_altruism, mean_altruism_A, mean_altruism_B, mean_p, mean_p_A, mean_p_B);
 	}
 }
 
 /**
- * Prints selection and transmission to a file.
+ * Prints selection and transmission to a file, and the within-colony covariance between p and fitness for the colony of interest.
  */
 void printSelectionToFile(FILE *filename, int timestep){
 	if(timestep == 0){
-		fprintf(filename, "Timestep Time cumulativeSelectionP cumulativeTransmissionP cumulativeSelectionAltruism cumulativeTransmissionAltruism cumulativeSelectionProduct cumulativeTransmissionProduct\n");
+		fprintf(filename, "Timestep Time cumulativeSelectionP cumulativeTransmissionP cumulativeSelectionAltruism cumulativeTransmissionAltruism cumulativeSelectionProduct cumulativeTransmissionProduct covariancePandFitnessColony\n");
 	}
-	fprintf(filename, "%d %f %f %f %f %f %f %f\n", timestep, timestep*DELTATIME, cumulative_selection_p, cumulative_transmission_p, cumulative_selection_altruism, cumulative_transmission_altruism, cumulative_selection_p_altruism_product, cumulative_transmission_p_altruism_product);
+	fprintf(filename, "%d %f %f %f %f %f %f %f %f\n", timestep, timestep*DELTATIME, cumulative_selection_p, cumulative_transmission_p, cumulative_selection_altruism, cumulative_transmission_altruism, cumulative_selection_p_altruism_product, cumulative_transmission_p_altruism_product, covariance_p_fitness_colony);
 }
 
 /**
