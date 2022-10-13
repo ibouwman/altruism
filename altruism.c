@@ -877,7 +877,7 @@ void freeMemory(void){
 void printRunInfoToFile(FILE *filename, int timestep){
 	if(timestep == 0){
 		printParametersToFile(filename);
-		fprintf(filename, "Timestep Time Population_size As Bs Number_of_mutants Mutant_colony_size Mean_altruism_all Mean_altruism_A Mean_altruism_B Mean_p_all Mean_p_A Mean_p_B Cov_p_fitness_colony\n");
+		fprintf(filename, "Timestep Time Population_size As Bs Number_of_mutants Mutant_colony_size Mean_altruism_all Mean_altruism_A Mean_altruism_B Mean_p_all Mean_p_A Mean_p_B\n");
 	}
 	if(timestep % OUTPUTINTERVAL == 0){
 		double total_altruism = 0; double total_p = 0;
