@@ -16,6 +16,8 @@
 #include <complex.h>
 #include <fftw3.h>
 #include "ziggurat_inline.h"
+#include <sys/stat.h>
+#include <sys/types.h>
 
 //Declare functions (in order of usage)
 //Functions used in main():
@@ -50,8 +52,8 @@ double sumMatrix(fftw_complex*);
 
 //Define parameters and settings, following 2D/parameters in the Fortran code (and Table 1 of the paper)
 //Settings
-#define TMAX 100001
-#define OUTPUTINTERVAL 1250 //Number of timesteps between each output print
+#define TMAX 101
+#define OUTPUTINTERVAL 10 //Number of timesteps between each output print
 #define FIELDS 7 //Number of fields to take into account (in each direction) when creating the normal kernel
 #define DELTATIME 0.08 //Multiply rate by DELTATIME to get probability per timestep
 #define DELTASPACE 0.1 //Size of a position. This equals 1/resolution in the Fortran code.
@@ -124,6 +126,7 @@ char filename_experienced_altruism[50];
 char filename_summed_altruism[50];
 char filename_density[50];
 char filename_runinfo[50];
+char dirname_files[50];
 char run_id[] = "00000"; //Give your run a unique id to prevent overwriting of output files
 
 //Main
@@ -145,13 +148,15 @@ int main() {
 	createNormalKernel(ALTRUISMSCALE, normal_for_altruism);
 	fftw_execute(fftw_plan_normal_for_density_forward);
 	fftw_execute(fftw_plan_normal_for_altruism_forward);
-	printf("Creating individuals...\n");
+	sprintf(dirname_files, "run%s", run_id); //Create new directory for output files
+	mkdir(dirname_files, 0777);
+	printf("Creating individuals...\n"); //Create initial individuals
 	makeIndividuals();
 	population_size_old = INITIALPOPULATIONSIZE;
 	population_size_new = 0;
 	counter = 1; //Counter for file naming
 	FILE *runinfo_file;
-	sprintf(filename_runinfo, "%s_runinfo.txt", run_id);
+	sprintf(filename_runinfo, "%s/%s_runinfo.txt", dirname_files, run_id);
 	runinfo_file = fopen(filename_runinfo, "w+");
     for (int t = 0; t < TMAX; t++) {
     	if(t == 0){
@@ -166,11 +171,11 @@ int main() {
     		printf("%d out of %d timesteps.\n", t, TMAX);
     	}
     	if(t % OUTPUTINTERVAL == 0){
-        	sprintf(filename_experienced_altruism, "%s_expaltr_%04d.txt", run_id, counter);
+        	sprintf(filename_experienced_altruism, "%s/%s_expaltr_%04d.txt", dirname_files, run_id, counter);
         	expaltr_file = fopen(filename_experienced_altruism, "w+");
-        	sprintf(filename_summed_altruism, "%s_sumaltr_%04d.txt", run_id, counter);
+        	sprintf(filename_summed_altruism, "%s/%s_sumaltr_%04d.txt", dirname_files, run_id, counter);
         	sumaltr_file = fopen(filename_summed_altruism, "w+");
-        	sprintf(filename_density, "%s_density_%04d.txt", run_id, counter);
+        	sprintf(filename_density, "%s/%s_density_%04d.txt", dirname_files, run_id, counter);
         	density_file = fopen(filename_density, "w+");
         	counter++;
         	printExperiencedAltruismMatrixToFile();
