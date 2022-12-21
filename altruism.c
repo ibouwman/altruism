@@ -52,14 +52,13 @@ void printExperiencedAltruismMatrixToFile(void);
 void printDensityMatrixToFile(void);
 void printSummedAltruismMatrixToFile(void);
 void printSummedPmatrixToFile(void);
-void printTraitMatrixToFile(int, int, double, double);
 void printSelectionToFile(FILE*, int);
 void printSummedMatrixToFile(FILE*, int);
 double sumMatrix(fftw_complex*);
 
 //Define parameters and settings, following 2D/parameters in the Fortran code (and Table 1 of the paper)
 //Settings
-#define TMAX 5000001
+#define TMAX 2500001
 #define OUTPUTINTERVAL 62500 //Number of timesteps between each output print
 #define FIELDS 7 //Number of fields to take into account (in each direction) when creating the normal kernel
 #define DELTATIME 0.08 //Multiply rate by DELTATIME to get probability per timestep
@@ -75,7 +74,7 @@ double sumMatrix(fftw_complex*);
 #define BIRTHRATE 5.0 //Baseline max birth rate
 #define DEATHRATE 1.0
 #define MUTATIONPROBABILITYPRODUCTION 0.001
-#define MUTATIONPROBABILITYP 0.001
+#define MUTATIONPROBABILITYP 0.005
 #define MEANMUTSIZEPRODUCTION 0.005
 #define MEANMUTSIZEP 0.005
 #define ALTRUISMSCALE 1
@@ -136,7 +135,6 @@ double* sumaltr_B;
 double* sump;
 double* sump_A;
 double* sump_B;
-int* trait_matrix;
 
 int INITIALPOPULATIONSIZE = round(STEADYSTATEDENSITY * GRIDSIZE); //Initial and maximal population size depend on steady state density and grid size.
 int MAXPOPULATIONSIZE = round(1.5 * K * GRIDSIZE); //Note that MAXPOPULATIONSIZE can be larger than NPOS because multiple individuals are allowed at the same position.
@@ -166,7 +164,6 @@ FILE *sump_file;
 FILE *sump_file_A;
 FILE *sump_file_B;
 FILE *runinfo_file;
-FILE *trait_matrix_file;
 FILE *selection_file;
 char filename_experienced_altruism[50];
 char filename_density[50];;
@@ -178,7 +175,6 @@ char filename_summed_altruism_B[50];
 char filename_summed_p[50];
 char filename_summed_p_A[50];
 char filename_summed_p_B[50];
-char filename_trait_matrix[50];
 char filename_runinfo[50];
 char filename_selection[50];
 
@@ -257,19 +253,15 @@ int main(int argc, char* argv[]) { //Pass arguments in order alpha, kappa, runid
         	sump_file_A = fopen(filename_summed_p_A, "w+");
         	sprintf(filename_summed_p_B, "%s_sumpB_%04d.txt", run_id, counter);
         	sump_file_B = fopen(filename_summed_p_B, "w+");
-        	//sprintf(filename_trait_matrix, "%s_traitmatrix_%04d.txt", run_id, counter);
-        	//trait_matrix_file = fopen(filename_trait_matrix, "w+");
         	counter++;
         	printExperiencedAltruismMatrixToFile();
         	printDensityMatrixToFile();
         	printSummedAltruismMatrixToFile();
         	printSummedPmatrixToFile();
-        	//printTraitMatrixToFile(NBINSALTRUISM, NBINSP, 0.01, 0.1); //TODO: Think about global/local variables, or adding maxvalue for p or altruism instead of binsize
         	fclose(expaltr_file);
         	fclose(density_file); fclose(density_file_A); fclose(density_file_B);
         	fclose(sumaltr_file); fclose(sumaltr_file_A); fclose(sumaltr_file_B);
         	fclose(sump_file); fclose(sump_file_A); fclose(sump_file_B);
-        	//fclose(trait_matrix_file);
     	}
 		for (int i = 0; i < population_size_old; i++){
 			int i_new = i + newborns - deaths; //The index of i in the new timestep, taking into account births and deaths the current timestep
@@ -341,7 +333,6 @@ void allocateMemory(void){
     sump = malloc(NPOS * sizeof(double));
     sump_A = malloc(NPOS * sizeof(double));
     sump_B = malloc(NPOS * sizeof(double));
-    trait_matrix = malloc(NBINSALTRUISM * NBINSP * sizeof(int));
 	normal_for_density = fftw_alloc_complex(NPOS);
 	normal_for_altruism = fftw_alloc_complex(NPOS);
     normal_for_density_forward = fftw_alloc_complex(NPOS);
@@ -708,7 +699,6 @@ void updateStates(){
 	memset(sump, 0, NPOS * sizeof(*sump));
 	memset(sump_A, 0, NPOS * sizeof(*sump_A));
 	memset(sump_B, 0, NPOS * sizeof(*sump_B));
-	memset(trait_matrix, 0, NBINSALTRUISM * NBINSP * sizeof(*trait_matrix));
 	memset(density, 0, NPOS * sizeof(*density));
 	memset(density_forward, 0, NPOS * sizeof(*density_forward));
 	memset(normal_forward_density_forward_product, 0, NPOS * sizeof(*normal_forward_density_forward_product));
@@ -744,7 +734,6 @@ void freeMemory(void){
 	free(sump);
 	free(sump_A);
 	free(sump_B);
-	free(trait_matrix);
 	fftw_free(normal_for_density);
 	fftw_free(normal_for_altruism);
 	fftw_free(normal_for_density_forward);
@@ -1035,38 +1024,9 @@ void printSummedPmatrixToFile(){
 				fprintf(sump_file_B, "\t");
 			}
 		}
-		fprintf(sump_file, "%f", sump[index]);
-		fprintf(sump_file_A, "%f", sump_A[index]);
-		fprintf(sump_file_B, "%f", sump_B[index]);
-	}
-}
-
-/**
- * Creates a frequency table with the values of p and altruism level.
- */
-void printTraitMatrixToFile(int bins_x, int bins_y, double binsize_x, double binsize_y){
-	for(int i = 0; i < population_size_old; i++){
-		int xbin = floor(individuals_old[i].altruism/binsize_x);
-		if(xbin > (bins_x-1)){ //Add largest values to last bin
-			xbin = bins_x-1;
-		}
-		int ybin = (bins_y - 1) - floor(individuals_old[i].p/binsize_y); //FIXME: This can give incorrect output if p is 0.2 or 0.3 (instead of 0.31) etc.
-		if(ybin < 0){
-			ybin = 0;
-		}
-		int position_in_matrix = ybin * bins_x + xbin;
-		trait_matrix[position_in_matrix] += 1;
-	}
-	for(int index = 0; index < (bins_x*bins_y); index++){
-		if(index != 0){
-			if(index % bins_y == 0){
-				fprintf(trait_matrix_file, "\n");
-			}
-			else{
-				fprintf(trait_matrix_file, "\t");
-			}
-		}
-		fprintf(trait_matrix_file, "%d", trait_matrix[index]);
+		fprintf(sump_file, "%.10e", sump[index]);
+		fprintf(sump_file_A, "%.10e", sump_A[index]);
+		fprintf(sump_file_B, "%.10e", sump_B[index]);
 	}
 }
 
